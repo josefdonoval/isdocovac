@@ -1,0 +1,293 @@
+@page "/my-invoices"
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Services
+@using Isdocovac.Providers
+@using Microsoft.AspNetCore.Authorization
+@inject IInvoiceService InvoiceService
+@inject IInvoiceProcessingProvider ProcessingProvider
+@inject IUserProvider UserProvider
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>My Invoices</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>My Invoices</h1>
+        <button class="btn btn-primary" @onclick="NavigateToUpload">
+            Upload New Invoice
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading your invoices...</p>
+        </div>
+    }
+    else if (invoices == null || !invoices.Any())
+    {
+        <div class="alert alert-info">
+            <h4 class="alert-heading">No invoices found</h4>
+            <p>You haven't uploaded any invoices yet. Click the button above to upload your first invoice.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>Uploaded</th>
+                        <th>Size</th>
+                        <th>Status</th>
+                        <th>Processing Attempts</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var invoice in invoices)
+                    {
+                        <tr>
+                            <td>@invoice.FileName</td>
+                            <td>@invoice.UploadedAt.ToLocalTime().ToString("g")</td>
+                            <td>@FormatFileSize(invoice.FileSize)</td>
+                            <td>
+                                <span class="badge @GetStatusBadgeClass(invoice.Status)">
+                                    @invoice.Status.ToString()
+                                </span>
+                            </td>
+                            <td>
+                                @if (invoiceProcessings.ContainsKey(invoice.Id))
+                                {
+                                    var processings = invoiceProcessings[invoice.Id];
+                                    <button class="btn btn-sm btn-outline-info" @onclick="() => ToggleProcessingDetails(invoice.Id)">
+                                        @processings.Count() attempts
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0 attempts</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button class="btn btn-outline-primary" @onclick="() => DownloadInvoice(invoice.Id)" title="Download">
+                                        Download
+                                    </button>
+                                    <button class="btn btn-outline-success" @onclick="() => StartProcessing(invoice.Id)" title="Process">
+                                        Process
+                                    </button>
+                                    <button class="btn btn-outline-danger" @onclick="() => DeleteInvoice(invoice.Id)" title="Delete">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        @if (expandedInvoiceId == invoice.Id && invoiceProcessings.ContainsKey(invoice.Id))
+                        {
+                            <tr>
+                                <td colspan="6" class="bg-light">
+                                    <div class="p-3">
+                                        <h6>Processing History</h6>
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Attempt</th>
+                                                    <th>Started</th>
+                                                    <th>Completed</th>
+                                                    <th>Status</th>
+                                                    <th>Result</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var processing in invoiceProcessings[invoice.Id])
+                                                {
+                                                    <tr>
+                                                        <td>#@processing.AttemptNumber</td>
+                                                        <td>@processing.StartedAt.ToLocalTime().ToString("g")</td>
+                                                        <td>@(processing.CompletedAt?.ToLocalTime().ToString("g") ?? "-")</td>
+                                                        <td>
+                                                            <span class="badge @GetProcessingStatusBadgeClass(processing.Status)">
+                                                                @processing.Status.ToString()
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            @if (processing.Status == (int)Isdocovac.Models.Enums.ProcessingStatus.Failed)
+                                                            {
+                                                                <span class="text-danger">@processing.ErrorMessage</span>
+                                                            }
+                                                            else if (processing.Status == (int)Isdocovac.Models.Enums.ProcessingStatus.Completed && processing.ParsedIsdoc != null)
+                                                            {
+                                                                <span class="text-success">
+                                                                    Invoice: @processing.ParsedIsdoc.InvoiceNumber
+                                                                    (@processing.ParsedIsdoc.TotalAmount @processing.ParsedIsdoc.Currency)
+                                                                </span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="text-muted">-</span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<InvoiceUpload>? invoices;
+    private Dictionary<Guid, IEnumerable<InvoiceProcessing>> invoiceProcessings = new();
+    private Guid? expandedInvoiceId;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoices();
+    }
+
+    private async Task LoadInvoices()
+    {
+        try
+        {
+            isLoading = true;
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                return;
+            }
+
+            var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
+            {
+                invoices = new List<InvoiceUpload>();
+                return;
+            }
+
+            var dbUser = await UserProvider.GetUserByIdAsync(userId);
+            if (dbUser == null)
+            {
+                invoices = new List<InvoiceUpload>();
+                return;
+            }
+
+            invoices = (await InvoiceService.GetUserInvoicesAsync(dbUser.Id)).ToList();
+
+            foreach (var invoice in invoices)
+            {
+                var processings = await ProcessingProvider.GetProcessingsByInvoiceIdAsync(invoice.Id);
+                invoiceProcessings[invoice.Id] = processings;
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ToggleProcessingDetails(Guid invoiceId)
+    {
+        expandedInvoiceId = expandedInvoiceId == invoiceId ? null : invoiceId;
+    }
+
+    private async Task DownloadInvoice(Guid invoiceId)
+    {
+        try
+        {
+            var sasUrl = await InvoiceService.GetInvoiceDownloadUrlAsync(invoiceId);
+            NavigationManager.NavigateTo(sasUrl, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error downloading invoice: {ex.Message}");
+        }
+    }
+
+    private async Task StartProcessing(Guid invoiceId)
+    {
+        try
+        {
+            await InvoiceService.StartProcessingAsync(invoiceId);
+            await LoadInvoices();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting processing: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteInvoice(Guid invoiceId)
+    {
+        try
+        {
+            await InvoiceService.DeleteInvoiceAsync(invoiceId);
+            await LoadInvoices();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting invoice: {ex.Message}");
+        }
+    }
+
+    private void NavigateToUpload()
+    {
+        NavigationManager.NavigateTo("/upload-invoice");
+    }
+
+    private string GetStatusBadgeClass(Isdocovac.Models.Enums.InvoiceUploadStatus status)
+    {
+        return status switch
+        {
+            Isdocovac.Models.Enums.InvoiceUploadStatus.Pending => "bg-secondary",
+            Isdocovac.Models.Enums.InvoiceUploadStatus.Processing => "bg-primary",
+            Isdocovac.Models.Enums.InvoiceUploadStatus.Completed => "bg-success",
+            Isdocovac.Models.Enums.InvoiceUploadStatus.Failed => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetProcessingStatusBadgeClass(int status)
+    {
+        var enumStatus = (Isdocovac.Models.Enums.ProcessingStatus)status;
+        return enumStatus switch
+        {
+            Isdocovac.Models.Enums.ProcessingStatus.Pending => "bg-secondary",
+            Isdocovac.Models.Enums.ProcessingStatus.InProgress => "bg-primary",
+            Isdocovac.Models.Enums.ProcessingStatus.Completed => "bg-success",
+            Isdocovac.Models.Enums.ProcessingStatus.Failed => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}

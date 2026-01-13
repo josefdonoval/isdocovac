@@ -2,9 +2,32 @@ using Isdocovac.Components;
 using Isdocovac.Data;
 using Isdocovac.Providers;
 using Isdocovac.Services;
+using Isdocovac.Services.Authentication;
+using Isdocovac.Services.Email;
+using Isdocovac.Services.Security;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add custom cookie-based authentication
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "SessionToken";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.LoginPath = "/auth/login";
+        options.LogoutPath = "/auth/logout";
+        options.ExpireTimeSpan = TimeSpan.FromDays(
+            builder.Configuration.GetValue<int>("Authentication:Session:AbsoluteExpirationDays", 14));
+        options.SlidingExpiration = true;
+    });
+
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -18,9 +41,33 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IUserProvider, UserProvider>();
 builder.Services.AddScoped<IInvoiceProvider, InvoiceProvider>();
 builder.Services.AddScoped<IParsedIsdocProvider, ParsedIsdocProvider>();
+builder.Services.AddScoped<IInvoiceProcessingProvider, InvoiceProcessingProvider>();
+builder.Services.AddScoped<IAzureBlobStorageProvider, AzureBlobStorageProvider>();
+
+// Register authentication providers
+builder.Services.AddScoped<IAuthTokenProvider, AuthTokenProvider>();
+builder.Services.AddScoped<ISessionProvider, SessionProvider>();
+builder.Services.AddScoped<ILoginAttemptProvider, LoginAttemptProvider>();
+
+// Register authentication services
+builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
+builder.Services.AddScoped<ISessionService, SessionService>();
+builder.Services.AddScoped<IEmailService, LoopsEmailService>();
+builder.Services.AddScoped<IRateLimitService, RateLimitService>();
+builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
+
+// Add HTTP context accessor for authentication
+builder.Services.AddHttpContextAccessor();
+
+// Add memory cache for rate limiting
+builder.Services.AddMemoryCache();
+
+// Add HTTP client for email service
+builder.Services.AddHttpClient();
 
 // Register application services
 builder.Services.AddScoped<IWeatherService, WeatherService>();
+builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 
 var app = builder.Build();
 
@@ -33,6 +80,9 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseAntiforgery();
 

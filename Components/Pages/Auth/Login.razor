@@ -1,0 +1,155 @@
+@page "/auth/login"
+@rendermode InteractiveServer
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Email
+@using Isdocovac.Services.Security
+@inject IMagicLinkService MagicLinkService
+@inject IEmailService EmailService
+@inject IRateLimitService RateLimitService
+@inject IConfiguration Configuration
+@inject NavigationManager NavigationManager
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Login - Isdocovac</PageTitle>
+
+<div class="container" style="max-width: 400px; margin-top: 100px;">
+    <div class="card">
+        <div class="card-body">
+            <h3 class="card-title text-center mb-4">Login to Isdocovac</h3>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">
+                    @errorMessage
+                </div>
+            }
+
+            @if (isLoading)
+            {
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Sending magic link...</p>
+                </div>
+            }
+            else
+            {
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email address</label>
+                    <input type="email"
+                           class="form-control"
+                           id="email"
+                           placeholder="Enter your email"
+                           @bind="email"
+                           @onkeypress="HandleKeyPress" />
+                </div>
+
+                <button class="btn btn-primary w-100" @onclick="SendMagicLink" disabled="@isLoading">
+                    Send Magic Link
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string email = string.Empty;
+    private string? errorMessage;
+    private bool isLoading = false;
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendMagicLink();
+        }
+    }
+
+    private async Task SendMagicLink()
+    {
+        errorMessage = null;
+
+        // Validate email
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            errorMessage = "Please enter your email address.";
+            return;
+        }
+
+        if (!IsValidEmail(email))
+        {
+            errorMessage = "Please enter a valid email address.";
+            return;
+        }
+
+        isLoading = true;
+
+        try
+        {
+            // Get client IP address
+            var httpContext = HttpContextAccessor.HttpContext;
+            var ipAddress = httpContext?.Connection.RemoteIpAddress?.ToString();
+            var userAgent = httpContext?.Request.Headers.UserAgent.ToString();
+
+            // Check rate limiting
+            var emailAllowed = await RateLimitService.IsEmailAllowedAsync(email);
+            if (!emailAllowed)
+            {
+                errorMessage = "Too many attempts. Please try again in 15 minutes.";
+                await RateLimitService.RecordAttemptAsync(email, ipAddress, false, "Rate limit exceeded (email)");
+                isLoading = false;
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(ipAddress))
+            {
+                var ipAllowed = await RateLimitService.IsIpAddressAllowedAsync(ipAddress);
+                if (!ipAllowed)
+                {
+                    errorMessage = "Too many attempts from your IP address. Please try again in 15 minutes.";
+                    await RateLimitService.RecordAttemptAsync(email, ipAddress, false, "Rate limit exceeded (IP)");
+                    isLoading = false;
+                    return;
+                }
+            }
+
+            // Generate magic link token
+            var token = await MagicLinkService.GenerateTokenAsync(email, ipAddress, userAgent);
+
+            // Build magic link URL
+            var baseUrl = Configuration["Authentication:MagicLink:BaseUrl"] ?? httpContext?.Request.Scheme + "://" + httpContext?.Request.Host;
+            var magicLinkUrl = $"{baseUrl}/auth/magic-link?token={Uri.EscapeDataString(token)}";
+
+            // Send email
+            await EmailService.SendMagicLinkEmailAsync(email, magicLinkUrl);
+
+            // Record successful attempt
+            await RateLimitService.RecordAttemptAsync(email, ipAddress, true);
+
+            // Redirect to confirmation page
+            NavigationManager.NavigateTo($"/auth/magic-link-sent?email={Uri.EscapeDataString(email)}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred while sending the magic link. Please try again.";
+            var httpContext = HttpContextAccessor.HttpContext;
+            var ipAddress = httpContext?.Connection.RemoteIpAddress?.ToString();
+            await RateLimitService.RecordAttemptAsync(email, ipAddress, false, ex.Message);
+            isLoading = false;
+        }
+    }
+
+    private bool IsValidEmail(string email)
+    {
+        try
+        {
+            var addr = new System.Net.Mail.MailAddress(email);
+            return addr.Address == email;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

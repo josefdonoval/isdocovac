@@ -1,0 +1,122 @@
+@page "/auth/magic-link"
+@rendermode InteractiveServer
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using System.Security.Claims
+@inject IMagicLinkService MagicLinkService
+@inject ISessionService SessionService
+@inject NavigationManager NavigationManager
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Logging In - Isdocovac</PageTitle>
+
+<div class="container" style="max-width: 500px; margin-top: 100px;">
+    <div class="card">
+        <div class="card-body text-center">
+            @if (isValidating)
+            {
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Validating...</span>
+                </div>
+                <p>Validating your magic link...</p>
+            }
+            else if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-x-circle text-danger mb-3" viewBox="0 0 16 16">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                    <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                </svg>
+                <h4 class="text-danger">Login Failed</h4>
+                <p class="text-muted">@errorMessage</p>
+                <a href="/auth/login" class="btn btn-primary mt-3">Request New Magic Link</a>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "token")]
+    private string? token { get; set; }
+
+    private bool isValidating = true;
+    private string? errorMessage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ValidateToken();
+        }
+    }
+
+    private async Task ValidateToken()
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            errorMessage = "Invalid magic link. Please request a new one.";
+            isValidating = false;
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            // Validate the token and get the user
+            var user = await MagicLinkService.ValidateTokenAsync(token);
+
+            if (user == null)
+            {
+                errorMessage = "This magic link is invalid, expired, or has already been used. Please request a new one.";
+                isValidating = false;
+                StateHasChanged();
+                return;
+            }
+
+            // Create a session for the user
+            var httpContext = HttpContextAccessor.HttpContext;
+            var ipAddress = httpContext?.Connection.RemoteIpAddress?.ToString();
+            var userAgent = httpContext?.Request.Headers.UserAgent.ToString();
+
+            var sessionToken = await SessionService.CreateSessionAsync(user.Id, ipAddress, userAgent);
+
+            // Sign in the user using ASP.NET Core authentication
+            if (httpContext != null)
+            {
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Email, user.Email),
+                    new Claim("SessionToken", sessionToken)
+                };
+
+                if (!string.IsNullOrEmpty(user.DisplayName))
+                {
+                    claims.Add(new Claim("DisplayName", user.DisplayName));
+                }
+
+                var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var authProperties = new AuthenticationProperties
+                {
+                    IsPersistent = true,
+                    ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14)
+                };
+
+                await httpContext.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    new ClaimsPrincipal(claimsIdentity),
+                    authProperties);
+            }
+
+            // Redirect to home page with force load to ensure authentication is picked up
+            NavigationManager.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred while logging you in: {ex.Message}";
+            isValidating = false;
+            StateHasChanged();
+        }
+    }
+}

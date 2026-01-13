@@ -1,0 +1,190 @@
+@page "/upload-invoice"
+@using System.Security.Claims
+@using Isdocovac.Services
+@using Isdocovac.Providers
+@using Microsoft.AspNetCore.Authorization
+@inject IInvoiceService InvoiceService
+@inject IUserProvider UserProvider
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Upload Invoice</PageTitle>
+
+<div class="container mt-4">
+    <h1>Upload Invoice</h1>
+    <p class="text-muted">Upload an ISDOC XML invoice file for processing</p>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @successMessage
+            <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-body">
+            <EditForm Model="@this" OnValidSubmit="HandleUpload">
+                <div class="mb-3">
+                    <label for="fileInput" class="form-label">Select ISDOC XML file</label>
+                    <InputFile id="fileInput" class="form-control" OnChange="HandleFileSelected" accept=".xml,.isdoc" disabled="@isUploading" />
+                    <div class="form-text">Maximum file size: 10 MB. Accepted formats: .xml, .isdoc</div>
+                </div>
+
+                @if (selectedFile != null)
+                {
+                    <div class="alert alert-info">
+                        <strong>Selected file:</strong> @selectedFile.Name (@FormatFileSize(selectedFile.Size))
+                    </div>
+                }
+
+                @if (isUploading)
+                {
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%">
+                            Uploading...
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary" disabled="@(selectedFile == null || isUploading)">
+                        @if (isUploading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        }
+                        Upload Invoice
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="NavigateToMyInvoices" disabled="@isUploading">
+                        View My Invoices
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <h5>About ISDOC Format</h5>
+        <p class="text-muted">
+            ISDOC is an XML-based electronic invoice format recognized by the Czech Ministry of Finance.
+            The uploaded file will be validated against the ISDOC schema and parsed to extract invoice information.
+        </p>
+    </div>
+</div>
+
+@code {
+    private IBrowserFile? selectedFile;
+    private string? errorMessage;
+    private string? successMessage;
+    private bool isUploading = false;
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private async Task HandleUpload()
+    {
+        if (selectedFile == null)
+        {
+            errorMessage = "Please select a file to upload.";
+            return;
+        }
+
+        if (selectedFile.Size > MaxFileSize)
+        {
+            errorMessage = $"File size exceeds maximum allowed size of {FormatFileSize(MaxFileSize)}.";
+            return;
+        }
+
+        if (!IsValidFileType(selectedFile.Name))
+        {
+            errorMessage = "Invalid file type. Please upload an XML or ISDOC file.";
+            return;
+        }
+
+        try
+        {
+            isUploading = true;
+            errorMessage = null;
+            successMessage = null;
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                errorMessage = "You must be logged in to upload invoices.";
+                isUploading = false;
+                return;
+            }
+
+            var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
+            {
+                errorMessage = "Invalid session. Please log in again.";
+                isUploading = false;
+                return;
+            }
+
+            var dbUser = await UserProvider.GetUserByIdAsync(userId);
+            if (dbUser == null)
+            {
+                errorMessage = "User not found. Please log in again.";
+                isUploading = false;
+                return;
+            }
+
+            using var stream = selectedFile.OpenReadStream(MaxFileSize);
+            await InvoiceService.UploadInvoiceAsync(dbUser.Id, selectedFile.Name, selectedFile.Size, selectedFile.ContentType, stream);
+
+            successMessage = $"Invoice '{selectedFile.Name}' uploaded successfully! You can view it in My Invoices.";
+            selectedFile = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error uploading invoice: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private bool IsValidFileType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension == ".xml" || extension == ".isdoc";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private void NavigateToMyInvoices()
+    {
+        NavigationManager.NavigateTo("/my-invoices");
+    }
+}

@@ -1,9 +1,9 @@
 namespace Isdocovac.Models.Enums;
 
-public enum InvoiceUploadStatus
+public enum ProcessingStatus
 {
     Pending = 10,
-    Processing = 20,
+    InProgress = 20,
     Completed = 30,
     Failed = 40
 }

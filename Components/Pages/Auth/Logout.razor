@@ -1,0 +1,61 @@
+@page "/auth/logout"
+@rendermode InteractiveServer
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject ISessionService SessionService
+@inject NavigationManager NavigationManager
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Logging Out - Isdocovac</PageTitle>
+
+<div class="container" style="max-width: 500px; margin-top: 100px;">
+    <div class="card">
+        <div class="card-body text-center">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Logging out...</span>
+            </div>
+            <p>Logging you out...</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LogoutUser();
+        }
+    }
+
+    private async Task LogoutUser()
+    {
+        try
+        {
+            var httpContext = HttpContextAccessor.HttpContext;
+            if (httpContext != null)
+            {
+                // Get the session token from the authenticated user's claims
+                var sessionToken = httpContext.User.FindFirst("SessionToken")?.Value;
+
+                if (!string.IsNullOrEmpty(sessionToken))
+                {
+                    // Revoke the session in our database
+                    await SessionService.RevokeSessionAsync(sessionToken);
+                }
+
+                // Sign out using ASP.NET Core authentication
+                await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            }
+
+            // Redirect to login page with force load
+            NavigationManager.NavigateTo("/auth/login", forceLoad: true);
+        }
+        catch (Exception)
+        {
+            // If anything fails, still redirect to login
+            NavigationManager.NavigateTo("/auth/login", forceLoad: true);
+        }
+    }
+}

@@ -77,13 +77,14 @@ All pages are in **Components/Pages/** with `@page` directive for routing:
 
 - **Providers/**: Data access layer wrapping Entity Framework DbContext
   - `IUserProvider` / `UserProvider`: User management and authentication
-  - `IInvoiceProvider` / `InvoiceProvider`: Invoice upload management
+  - `IInvoiceProvider` / `InvoiceProvider`: Invoice upload management with Azure Blob Storage integration
   - `IParsedIsdocProvider` / `ParsedIsdocProvider`: Parsed ISDOC data management
+  - `IAzureBlobStorageProvider` / `AzureBlobStorageProvider`: Azure Blob Storage file operations
   - Providers handle all database operations and are injected into services/components
 
 - **Models/**: Contains Entity Framework database models
   - `User.cs`: User entity with authentication fields (Id, Username, Email, PasswordHash, PasswordSalt, timestamps)
-  - `InvoiceUpload.cs`: Invoice upload entity storing original ISDOC XML files
+  - `InvoiceUpload.cs`: Invoice upload entity with Azure Blob Storage references (BlobContainerName, BlobName, BlobUrl)
   - `ParsedIsdoc.cs`: Parsed invoice data extracted from ISDOC XML
   - `InvoiceUploadStatus.cs`: Enum for upload status (Pending, Processing, Completed, Failed)
   - `WeatherForecast.cs`: Example model for weather data (not in database)
@@ -115,7 +116,7 @@ The application uses **Entity Framework Core 9.0** with **PostgreSQL** (Npgsql p
 
 **Database Schema**:
 - `users` table: User accounts with authentication credentials
-- `invoice_uploads` table: Stores uploaded ISDOC XML files and metadata
+- `invoice_uploads` table: Stores invoice upload metadata and Azure Blob Storage references
 - `parsed_isdocs` table: Stores parsed invoice data extracted from XML
 
 ### Database Migrations
@@ -134,20 +135,52 @@ dotnet ef database update PreviousMigrationName
 dotnet ef migrations remove
 ```
 
+### Azure Blob Storage Integration
+
+The application uses **Azure Blob Storage** for storing uploaded ISDOC XML files. Files are NOT stored in the database, only metadata and blob references are stored.
+
+**Configuration**:
+- Connection string in `appsettings.json` under `AzureStorage:ConnectionString`
+- Container name configured as `AzureStorage:InvoiceContainerName` (default: `invoice-uploads`)
+- Update connection string with your Azure Storage account credentials
+
+**Blob Storage Structure**:
+- Files are organized by user and upload ID: `{userId}/{uploadId}/{fileName}`
+- Private container access (no public access)
+- Secure access via Shared Access Signature (SAS) URLs for temporary file access
+
+**AzureBlobStorageProvider Methods**:
+- `UploadBlobAsync()`: Upload file to blob storage
+- `DownloadBlobAsync()`: Download file from blob storage
+- `DeleteBlobAsync()`: Delete file from blob storage
+- `BlobExistsAsync()`: Check if blob exists
+- `GetBlobUrl()`: Get blob URL
+- `GenerateSasUrlAsync()`: Generate time-limited SAS URL for secure file access
+
 ### ISDOC Format
 
 ISDOC (Invoice Standard Document) is an XML-based invoice format recognized by the Czech Ministry of Finance. The application:
 - Accepts ISDOC XML uploads (conforming to https://isdoc.cz/6.0.2/xsd/isdoc-invoice-6.0.2.xsd)
-- Stores raw XML in `InvoiceUpload.RawXmlContent`
+- Stores ISDOC XML files in Azure Blob Storage (not in database)
+- Database stores only metadata and blob references (container name, blob name, URL)
 - Parses and validates XML, storing results in `ParsedIsdoc` entities
 - Supports multiple parse versions per upload for re-parsing scenarios
 
 ## Configuration
 
-- **[appsettings.json](appsettings.json)**: Main configuration file with database connection string
+- **[appsettings.json](appsettings.json)**: Main configuration file
 - **[appsettings.Development.json](appsettings.Development.json)**: Development-specific settings
-- **Connection String**: `Host=localhost;Database=isdocovac_db;Username=postgres;Password=YOUR_PASSWORD_HERE`
-  - Update password before running migrations
+
+**Required Configuration**:
+1. **Database Connection String**: `Host=localhost;Database=isdocovac_db;Username=postgres;Password=YOUR_PASSWORD_HERE`
+   - Update password before running migrations
+2. **Azure Storage Connection String**: `YOUR_AZURE_STORAGE_CONNECTION_STRING_HERE`
+   - Format: `DefaultEndpointsProtocol=https;AccountName=<account>;AccountKey=<key>;EndpointSuffix=core.windows.net`
+   - Required for file upload functionality
+3. **Azure Storage Container Name**: Configured as `AzureStorage:InvoiceContainerName`
+   - Production: `invoice-uploads`
+   - Development: `invoice-uploads-dev`
+
 - Logging levels are configured for ASP.NET Core components
 
 ## Development Notes
