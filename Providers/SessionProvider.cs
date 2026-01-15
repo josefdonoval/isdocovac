@@ -6,11 +6,11 @@ namespace Isdocovac.Providers;
 
 public class SessionProvider : ISessionProvider
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
 
-    public SessionProvider(ApplicationDbContext context)
+    public SessionProvider(IDbContextFactory<ApplicationDbContext> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task<UserSession> CreateAsync(Guid userId, string sessionTokenHash, DateTime expiresAt, string? ipAddress, string? userAgent)
@@ -28,22 +28,25 @@ public class SessionProvider : ISessionProvider
             IsActive = true
         };
 
-        _context.UserSessions.Add(session);
-        await _context.SaveChangesAsync();
+        await using var context = _contextFactory.CreateDbContext();
+        context.UserSessions.Add(session);
+        await context.SaveChangesAsync();
 
         return session;
     }
 
     public async Task<UserSession?> GetBySessionTokenHashAsync(string sessionTokenHash)
     {
-        return await _context.UserSessions
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.UserSessions
             .Include(s => s.User)
             .FirstOrDefaultAsync(s => s.SessionTokenHash == sessionTokenHash && s.IsActive);
     }
 
     public async Task<IEnumerable<UserSession>> GetActiveSessionsByUserAsync(Guid userId)
     {
-        return await _context.UserSessions
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.UserSessions
             .Where(s => s.UserId == userId && s.IsActive && s.ExpiresAt > DateTime.UtcNow)
             .OrderByDescending(s => s.LastActivityAt)
             .ToListAsync();
@@ -51,31 +54,34 @@ public class SessionProvider : ISessionProvider
 
     public async Task<UserSession> UpdateLastActivityAsync(Guid sessionId)
     {
-        var session = await _context.UserSessions.FindAsync(sessionId);
+        await using var context = _contextFactory.CreateDbContext();
+        var session = await context.UserSessions.FindAsync(sessionId);
         if (session == null)
         {
             throw new InvalidOperationException($"Session with ID {sessionId} not found");
         }
 
         session.LastActivityAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return session;
     }
 
     public async Task RevokeAsync(Guid sessionId)
     {
-        var session = await _context.UserSessions.FindAsync(sessionId);
+        await using var context = _contextFactory.CreateDbContext();
+        var session = await context.UserSessions.FindAsync(sessionId);
         if (session != null)
         {
             session.IsActive = false;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
         }
     }
 
     public async Task RevokeAllByUserAsync(Guid userId)
     {
-        var sessions = await _context.UserSessions
+        await using var context = _contextFactory.CreateDbContext();
+        var sessions = await context.UserSessions
             .Where(s => s.UserId == userId && s.IsActive)
             .ToListAsync();
 
@@ -84,12 +90,13 @@ public class SessionProvider : ISessionProvider
             session.IsActive = false;
         }
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
     }
 
     public async Task<int> CleanupExpiredAsync()
     {
-        var expiredSessions = await _context.UserSessions
+        await using var context = _contextFactory.CreateDbContext();
+        var expiredSessions = await context.UserSessions
             .Where(s => s.ExpiresAt < DateTime.UtcNow)
             .ToListAsync();
 
@@ -98,6 +105,6 @@ public class SessionProvider : ISessionProvider
             session.IsActive = false;
         }
 
-        return await _context.SaveChangesAsync();
+        return await context.SaveChangesAsync();
     }
 }

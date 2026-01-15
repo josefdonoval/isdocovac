@@ -36,6 +36,9 @@ builder.Services.AddRazorComponents()
 // Register Entity Framework DbContext with PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")),
+    ServiceLifetime.Scoped);
 
 // Register application providers
 builder.Services.AddScoped<IUserProvider, UserProvider>();
