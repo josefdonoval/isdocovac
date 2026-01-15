@@ -69,7 +69,6 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 
 // Register application services
-builder.Services.AddScoped<IWeatherService, WeatherService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 
 var app = builder.Build();
