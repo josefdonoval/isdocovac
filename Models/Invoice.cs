@@ -59,6 +59,7 @@ public class Invoice
 
     // Timestamp Fields
     public DateTime? IssuedOn { get; set; }
+    public DateTime? TaxableSupplyDate { get; set; } // VAT date (DUZP - Date of Taxable Supply)
     public DateTime? SentAt { get; set; }
     public DateTime? PaidOn { get; set; }
     public DateTime? DueOn { get; set; }

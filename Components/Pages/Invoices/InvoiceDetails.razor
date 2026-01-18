@@ -61,6 +61,13 @@
                 }
             </div>
             <div class="col-md-4 text-end">
+                @if (invoice.Source == InvoiceSource.Manual)
+                {
+                    <a href="/invoices/@invoice.Id/edit" class="btn btn-primary mb-2">
+                        <span class="bi bi-pencil me-2"></span>Edit Invoice
+                    </a>
+                    <br>
+                }
                 @if (invoice.Source == InvoiceSource.Fakturoid && invoice.FakturoidInvoiceId.HasValue)
                 {
                     <button class="btn btn-primary mb-2" @onclick="ResyncFromFakturoid" disabled="@isResyncing">

@@ -1,0 +1,569 @@
+@page "/invoices/create"
+@using System.Security.Claims
+@using Isdocovac.Services
+@using Isdocovac.Providers
+@using Isdocovac.Models.Forms
+@using Isdocovac.Models.Enums
+@using Microsoft.AspNetCore.Authorization
+@inject IInvoiceManagementService InvoiceManagementService
+@inject IUserProvider UserProvider
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Create Invoice</PageTitle>
+
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/invoices">Invoices</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Create Manual Invoice</li>
+        </ol>
+    </nav>
+
+    <h1>Create Manual Invoice</h1>
+    <p class="text-muted">Create a new invoice manually with optional PDF attachment</p>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    <EditForm Model="@formModel" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+
+        <!-- Essential Fields Card -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="direction" class="form-label">Direction <span class="text-danger">*</span></label>
+                        <InputSelect id="direction" class="form-select" @bind-Value="formModel.Direction">
+                            <option value="@InvoiceDirection.Inbound">Inbound (Received)</option>
+                            <option value="@InvoiceDirection.Outbound">Outbound (Issued)</option>
+                        </InputSelect>
+                        <ValidationMessage For="@(() => formModel.Direction)" />
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="documentType" class="form-label">Document Type <span class="text-danger">*</span></label>
+                        <InputSelect id="documentType" class="form-select" @bind-Value="formModel.DocumentType">
+                            <option value="invoice">Invoice</option>
+                            <option value="proforma">Proforma</option>
+                            <option value="correction">Correction</option>
+                        </InputSelect>
+                        <ValidationMessage For="@(() => formModel.DocumentType)" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="number" class="form-label">Invoice Number <span class="text-danger">*</span></label>
+                        <InputText id="number" class="form-control" @bind-Value="formModel.Number" @bind-Value:after="OnInvoiceNumberChanged" />
+                        <div class="form-text">Auto-generated from VAT date</div>
+                        <ValidationMessage For="@(() => formModel.Number)" />
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="currency" class="form-label">Currency <span class="text-danger">*</span></label>
+                        <InputSelect id="currency" class="form-select" @bind-Value="formModel.Currency">
+                            <option value="CZK">CZK (Czech Koruna)</option>
+                            <option value="EUR">EUR (Euro)</option>
+                            <option value="USD">USD (US Dollar)</option>
+                            <option value="GBP">GBP (British Pound)</option>
+                        </InputSelect>
+                        <ValidationMessage For="@(() => formModel.Currency)" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="issuedOn" class="form-label">Issue Date <span class="text-danger">*</span></label>
+                        <InputDate id="issuedOn" class="form-control" @bind-Value="formModel.IssuedOn" @bind-Value:after="OnIssueDateChanged" />
+                        <ValidationMessage For="@(() => formModel.IssuedOn)" />
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label for="taxableSupplyDate" class="form-label">VAT Date <span class="text-danger">*</span></label>
+                        <InputDate id="taxableSupplyDate" class="form-control" @bind-Value="formModel.TaxableSupplyDate" @bind-Value:after="OnVatDateChanged" />
+                        <div class="form-text">Date of taxable supply (DUZP)</div>
+                        <ValidationMessage For="@(() => formModel.TaxableSupplyDate)" />
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label for="dueOn" class="form-label">Due Date</label>
+                        <InputDate id="dueOn" class="form-control" @bind-Value="formModel.DueOn" @bind-Value:after="OnDueDateChanged" />
+                        <div class="form-text">Auto: 30 days from issue</div>
+                        <ValidationMessage For="@(() => formModel.DueOn)" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="clientName" class="form-label">Client Name <span class="text-danger">*</span></label>
+                        <InputText id="clientName" class="form-control" @bind-Value="formModel.ClientName" />
+                        <div class="form-text">The customer/buyer</div>
+                        <ValidationMessage For="@(() => formModel.ClientName)" />
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="supplierName" class="form-label">Supplier Name <span class="text-danger">*</span></label>
+                        <InputText id="supplierName" class="form-control" @bind-Value="formModel.SupplierName" />
+                        <div class="form-text">The vendor/seller</div>
+                        <ValidationMessage For="@(() => formModel.SupplierName)" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="pdfFile" class="form-label">PDF Attachment (Optional)</label>
+                    <InputFile id="pdfFile" class="form-control" OnChange="HandleFileSelected" accept=".pdf" disabled="@isSubmitting" />
+                    <div class="form-text">Maximum file size: 10 MB. Accepted formats: .pdf</div>
+                    @if (formModel.PdfFile != null)
+                    {
+                        <div class="alert alert-info mt-2 mb-0">
+                            <strong>Selected file:</strong> @formModel.PdfFile.Name (@FormatFileSize(formModel.PdfFile.Size))
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Line Items Card -->
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Line Items <span class="text-danger">*</span></h5>
+                <button type="button" class="btn btn-sm btn-success" @onclick="AddLineItem" disabled="@isSubmitting">
+                    <span class="bi bi-plus-circle"></span> Add Line
+                </button>
+            </div>
+            <div class="card-body">
+                @if (formModel.Lines.Count == 0)
+                {
+                    <div class="alert alert-warning">
+                        No line items added yet. Click "Add Line" to add invoice items.
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%">#</th>
+                                    <th style="width: 30%">Description</th>
+                                    <th style="width: 12%">Qty</th>
+                                    <th style="width: 15%">Unit Price</th>
+                                    <th style="width: 12%">VAT %</th>
+                                    <th style="width: 15%">Total</th>
+                                    <th style="width: 11%"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (int i = 0; i < formModel.Lines.Count; i++)
+                                {
+                                    var index = i;
+                                    var line = formModel.Lines[index];
+                                    <tr>
+                                        <td>@(index + 1)</td>
+                                        <td>
+                                            <input type="text" class="form-control form-control-sm" @bind="line.Name" @bind:event="oninput" @onchange="() => RecalculateLine(index)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control form-control-sm" @bind="line.Quantity" @bind:event="oninput" @onchange="() => RecalculateLine(index)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control form-control-sm" @bind="line.UnitPrice" @bind:event="oninput" @onchange="() => RecalculateLine(index)" />
+                                        </td>
+                                        <td>
+                                            <input type="number" step="1" class="form-control form-control-sm" @bind="line.VatRate" @bind:event="oninput" @onchange="() => RecalculateLine(index)" />
+                                        </td>
+                                        <td class="text-end">
+                                            @line.TotalPriceWithVat.ToString("N2")
+                                        </td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveLineItem(index)" disabled="@isSubmitting">
+                                                <span class="bi bi-trash"></span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-6 offset-md-6">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td class="text-end"><strong>Subtotal (without VAT):</strong></td>
+                                    <td class="text-end">@formModel.Subtotal.ToString("N2") @formModel.Currency</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end"><strong>VAT:</strong></td>
+                                    <td class="text-end">@((formModel.Total - formModel.Subtotal).ToString("N2")) @formModel.Currency</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end"><strong>Total (with VAT):</strong></td>
+                                    <td class="text-end"><strong>@formModel.Total.ToString("N2") @formModel.Currency</strong></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Advanced Fields Card (Collapsible) -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <button class="btn btn-link p-0 text-decoration-none w-100 text-start" type="button" @onclick="ToggleAdvancedFields">
+                        <span class="bi @(showAdvancedFields ? "bi-chevron-down" : "bi-chevron-right")"></span>
+                        Advanced Fields (Optional)
+                    </button>
+                </h5>
+            </div>
+            @if (showAdvancedFields)
+            {
+                <div class="card-body">
+                    <h6 class="border-bottom pb-2 mb-3">Client Details</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="clientStreet" class="form-label">Street</label>
+                            <InputText id="clientStreet" class="form-control" @bind-Value="formModel.ClientStreet" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="clientCity" class="form-label">City</label>
+                            <InputText id="clientCity" class="form-control" @bind-Value="formModel.ClientCity" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="clientZip" class="form-label">ZIP Code</label>
+                            <InputText id="clientZip" class="form-control" @bind-Value="formModel.ClientZip" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="clientCountry" class="form-label">Country</label>
+                            <InputText id="clientCountry" class="form-control" @bind-Value="formModel.ClientCountry" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="clientVatNo" class="form-label">VAT Number</label>
+                            <InputText id="clientVatNo" class="form-control" @bind-Value="formModel.ClientVatNo" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="clientRegistrationNo" class="form-label">Registration No.</label>
+                            <InputText id="clientRegistrationNo" class="form-control" @bind-Value="formModel.ClientRegistrationNo" />
+                        </div>
+                    </div>
+
+                    <h6 class="border-bottom pb-2 mb-3 mt-4">Supplier Details</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="supplierStreet" class="form-label">Street</label>
+                            <InputText id="supplierStreet" class="form-control" @bind-Value="formModel.SupplierStreet" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="supplierCity" class="form-label">City</label>
+                            <InputText id="supplierCity" class="form-control" @bind-Value="formModel.SupplierCity" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="supplierZip" class="form-label">ZIP Code</label>
+                            <InputText id="supplierZip" class="form-control" @bind-Value="formModel.SupplierZip" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="supplierCountry" class="form-label">Country</label>
+                            <InputText id="supplierCountry" class="form-control" @bind-Value="formModel.SupplierCountry" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="supplierVatNo" class="form-label">VAT Number</label>
+                            <InputText id="supplierVatNo" class="form-control" @bind-Value="formModel.SupplierVatNo" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="supplierRegistrationNo" class="form-label">Registration No.</label>
+                            <InputText id="supplierRegistrationNo" class="form-control" @bind-Value="formModel.SupplierRegistrationNo" />
+                        </div>
+                    </div>
+
+                    <h6 class="border-bottom pb-2 mb-3 mt-4">Payment Details</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="variableSymbol" class="form-label">Variable Symbol</label>
+                            <InputText id="variableSymbol" class="form-control" @bind-Value="formModel.VariableSymbol" @bind-Value:after="OnVariableSymbolChanged" />
+                            <div class="form-text">Auto-filled from invoice number</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="constantSymbol" class="form-label">Constant Symbol</label>
+                            <InputText id="constantSymbol" class="form-control" @bind-Value="formModel.ConstantSymbol" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="specificSymbol" class="form-label">Specific Symbol</label>
+                            <InputText id="specificSymbol" class="form-control" @bind-Value="formModel.SpecificSymbol" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="iban" class="form-label">IBAN</label>
+                            <InputText id="iban" class="form-control" @bind-Value="formModel.Iban" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="bankAccount" class="form-label">Bank Account</label>
+                            <InputText id="bankAccount" class="form-control" @bind-Value="formModel.BankAccount" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="swiftBic" class="form-label">SWIFT/BIC</label>
+                            <InputText id="swiftBic" class="form-control" @bind-Value="formModel.SwiftBic" />
+                        </div>
+                    </div>
+
+                    <h6 class="border-bottom pb-2 mb-3 mt-4">Notes</h6>
+                    <div class="mb-3">
+                        <label for="note" class="form-label">Note (appears on invoice)</label>
+                        <InputTextArea id="note" class="form-control" rows="3" @bind-Value="formModel.Note" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="footerNote" class="form-label">Footer Note</label>
+                        <InputTextArea id="footerNote" class="form-control" rows="2" @bind-Value="formModel.FooterNote" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="privateNote" class="form-label">Private Note (internal only)</label>
+                        <InputTextArea id="privateNote" class="form-control" rows="2" @bind-Value="formModel.PrivateNote" />
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Submit Buttons -->
+        <div class="d-flex gap-2 mb-4">
+            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>Creating...</span>
+                }
+                else
+                {
+                    <span class="bi bi-check-circle me-2"></span>
+                    <span>Create Invoice</span>
+                }
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="NavigateToInvoices" disabled="@isSubmitting">
+                Cancel
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private InvoiceFormModel formModel = new();
+    private string? errorMessage;
+    private bool isSubmitting = false;
+    private bool showAdvancedFields = false;
+    private bool isDueDateManuallySet = false;
+    private bool isInvoiceNumberManuallySet = false;
+    private bool isVariableSymbolManuallySet = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Initialize with one empty line item
+        AddLineItem();
+
+        // Set initial due date to 30 days from issue date
+        UpdateDueDateFromIssueDate();
+
+        // Generate initial invoice number
+        await GenerateInvoiceNumber();
+    }
+
+    private void OnIssueDateChanged()
+    {
+        // Only auto-update due date if it hasn't been manually set
+        if (!isDueDateManuallySet)
+        {
+            UpdateDueDateFromIssueDate();
+        }
+    }
+
+    private void OnDueDateChanged()
+    {
+        // Mark that due date has been manually changed
+        isDueDateManuallySet = true;
+    }
+
+    private async Task OnVatDateChanged()
+    {
+        // Only auto-update invoice number if it hasn't been manually set
+        if (!isInvoiceNumberManuallySet)
+        {
+            await GenerateInvoiceNumber();
+        }
+    }
+
+    private void OnInvoiceNumberChanged()
+    {
+        // Mark that invoice number has been manually changed
+        isInvoiceNumberManuallySet = true;
+
+        // Auto-update variable symbol if not manually set
+        if (!isVariableSymbolManuallySet)
+        {
+            UpdateVariableSymbolFromInvoiceNumber();
+        }
+    }
+
+    private void OnVariableSymbolChanged()
+    {
+        // Mark that variable symbol has been manually changed
+        isVariableSymbolManuallySet = true;
+    }
+
+    private void UpdateDueDateFromIssueDate()
+    {
+        formModel.DueOn = formModel.IssuedOn.AddDays(30);
+    }
+
+    private async Task GenerateInvoiceNumber()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated ?? false)
+            {
+                var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(userIdString) && Guid.TryParse(userIdString, out var userId))
+                {
+                    formModel.Number = await InvoiceManagementService.GenerateInvoiceNumberAsync(userId, formModel.TaxableSupplyDate);
+
+                    // Auto-update variable symbol if not manually set
+                    if (!isVariableSymbolManuallySet)
+                    {
+                        UpdateVariableSymbolFromInvoiceNumber();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't fail - user can still manually enter invoice number
+            errorMessage = $"Could not auto-generate invoice number: {ex.Message}";
+        }
+    }
+
+    private void UpdateVariableSymbolFromInvoiceNumber()
+    {
+        formModel.VariableSymbol = formModel.Number;
+    }
+
+    private void AddLineItem()
+    {
+        formModel.Lines.Add(new InvoiceLineFormModel());
+    }
+
+    private void RemoveLineItem(int index)
+    {
+        if (formModel.Lines.Count > 0)
+        {
+            formModel.Lines.RemoveAt(index);
+            formModel.RecalculateTotals();
+        }
+    }
+
+    private void RecalculateLine(int index)
+    {
+        formModel.RecalculateTotals();
+        StateHasChanged();
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        formModel.PdfFile = e.File;
+        errorMessage = null;
+    }
+
+    private void ToggleAdvancedFields()
+    {
+        showAdvancedFields = !showAdvancedFields;
+    }
+
+    private async Task HandleSubmit()
+    {
+        errorMessage = null;
+
+        // Custom validation
+        if (!formModel.Validate(out var errors))
+        {
+            errorMessage = string.Join("; ", errors);
+            return;
+        }
+
+        try
+        {
+            isSubmitting = true;
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (!user.Identity?.IsAuthenticated ?? true)
+            {
+                errorMessage = "You must be logged in to create invoices.";
+                return;
+            }
+
+            var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
+            {
+                errorMessage = "Invalid session. Please log in again.";
+                return;
+            }
+
+            // Convert form model to entity
+            var invoice = formModel.ToEntity(userId);
+
+            // Create invoice with optional PDF attachment
+            var createdInvoice = await InvoiceManagementService.CreateManualInvoiceWithAttachmentAsync(invoice, formModel.PdfFile);
+
+            // Navigate to invoice details
+            NavigationManager.NavigateTo($"/invoices/{createdInvoice.Id}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error creating invoice: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void NavigateToInvoices()
+    {
+        NavigationManager.NavigateTo("/invoices");
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}

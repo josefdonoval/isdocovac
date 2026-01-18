@@ -11,6 +11,7 @@ public interface IMainInvoiceProvider
     Task<Invoice?> GetWithDetailsAsync(Guid invoiceId);
     Task<IEnumerable<Invoice>> GetByUserIdAsync(Guid userId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
     Task<int> GetCountAsync(Guid userId, InvoiceDirection? direction = null);
+    Task<int> GetCountForVatMonthAsync(Guid userId, int year, int month);
     Task<Invoice> CreateAsync(Invoice invoice);
     Task UpdateAsync(Invoice invoice);
     Task DeleteAsync(Guid invoiceId);
@@ -73,9 +74,27 @@ public class MainInvoiceProvider : IMainInvoiceProvider
         return await query.CountAsync();
     }
 
+    public async Task<int> GetCountForVatMonthAsync(Guid userId, int year, int month)
+    {
+        var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endDate = startDate.AddMonths(1);
+
+        return await _context.Invoices
+            .Where(i => i.UserId == userId
+                && i.TaxableSupplyDate.HasValue
+                && i.TaxableSupplyDate >= startDate
+                && i.TaxableSupplyDate < endDate)
+            .CountAsync();
+    }
+
     public async Task<Invoice> CreateAsync(Invoice invoice)
     {
-        invoice.Id = Guid.NewGuid();
+        // Only set ID if it's not already set (allow pre-generated IDs for related entities)
+        if (invoice.Id == Guid.Empty)
+        {
+            invoice.Id = Guid.NewGuid();
+        }
+
         invoice.CreatedAt = DateTime.UtcNow;
         invoice.UpdatedAt = DateTime.UtcNow;
         invoice.ImportedAt = DateTime.UtcNow;

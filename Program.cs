@@ -44,6 +44,7 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 // Register application providers
 builder.Services.AddScoped<IUserProvider, UserProvider>();
 builder.Services.AddScoped<IMainInvoiceProvider, MainInvoiceProvider>();
+builder.Services.AddScoped<IInvoiceAttachmentProvider, InvoiceAttachmentProvider>();
 builder.Services.AddScoped<IParsedInvoiceProvider, ParsedInvoiceProvider>();
 builder.Services.AddScoped<IParsedInvoiceProcessingProvider, ParsedInvoiceProcessingProvider>();
 builder.Services.AddScoped<IAzureBlobStorageProvider, AzureBlobStorageProvider>();
