@@ -1,0 +1,375 @@
+@page "/invoices/{InvoiceId:guid}"
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IInvoiceManagementService InvoiceManagementService
+@inject IInvoiceImportService InvoiceImportService
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Invoice @(invoice?.Number ?? "Details")</PageTitle>
+
+<div class="container-fluid py-4">
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading invoice details...</p>
+        </div>
+    }
+    else if (errorMessage != null)
+    {
+        <div class="alert alert-danger" role="alert">
+            @errorMessage
+        </div>
+        <button class="btn btn-secondary" @onclick='() => NavigationManager.NavigateTo("/invoices")'>
+            Back to Invoices
+        </button>
+    }
+    else if (invoice == null)
+    {
+        <div class="alert alert-warning" role="alert">
+            Invoice not found.
+        </div>
+        <button class="btn btn-secondary" @onclick='() => NavigationManager.NavigateTo("/invoices")'>
+            Back to Invoices
+        </button>
+    }
+    else
+    {
+        <div class="row mb-3">
+            <div class="col">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/invoices">Invoices</a></li>
+                        <li class="breadcrumb-item active">@invoice.Number</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <h1>Invoice @invoice.Number</h1>
+                @if (!string.IsNullOrEmpty(invoice.CustomId))
+                {
+                    <p class="text-muted">Custom ID: @invoice.CustomId</p>
+                }
+            </div>
+            <div class="col-md-4 text-end">
+                @if (invoice.Source == InvoiceSource.Fakturoid && invoice.FakturoidInvoiceId.HasValue)
+                {
+                    <button class="btn btn-primary mb-2" @onclick="ResyncFromFakturoid" disabled="@isResyncing">
+                        @if (isResyncing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Re-sync from Fakturoid
+                    </button>
+                    <br>
+                }
+                <a href="/invoices" class="btn btn-secondary">Back to List</a>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Invoice Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <strong>Document Type:</strong><br>
+                                @invoice.DocumentType
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Direction:</strong><br>
+                                @if (invoice.Direction == InvoiceDirection.Inbound)
+                                {
+                                    <span class="badge bg-primary">Inbound (Received)</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Outbound (Issued)</span>
+                                }
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Source:</strong><br>
+                                @if (invoice.Source == InvoiceSource.Fakturoid)
+                                {
+                                    <span class="badge bg-info">Fakturoid</span>
+                                }
+                                else if (invoice.Source == InvoiceSource.ISDOC)
+                                {
+                                    <span class="badge bg-success">ISDOC</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Manual</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <strong>Issued On:</strong><br>
+                                @(invoice.IssuedOn?.ToString("yyyy-MM-dd") ?? "-")
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Due On:</strong><br>
+                                @(invoice.DueOn?.ToString("yyyy-MM-dd") ?? "-")
+                            </div>
+                            <div class="col-md-4">
+                                <strong>Status:</strong><br>
+                                @if (invoice.Paid)
+                                {
+                                    <span class="badge bg-success">Paid</span>
+                                }
+                                else if (invoice.Cancelled)
+                                {
+                                    <span class="badge bg-secondary">Cancelled</span>
+                                }
+                                else if (invoice.Overdue)
+                                {
+                                    <span class="badge bg-danger">Overdue</span>
+                                }
+                                else if (invoice.Sent)
+                                {
+                                    <span class="badge bg-info">Sent</span>
+                                }
+                                else if (invoice.Open)
+                                {
+                                    <span class="badge bg-warning">Open</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>@(invoice.Direction == InvoiceDirection.Outbound ? "Supplier" : "Client") (Our Company)</h6>
+                                <p class="mb-0">
+                                    @(invoice.Direction == InvoiceDirection.Outbound ? invoice.SupplierName : invoice.ClientName)<br>
+                                    @(invoice.Direction == InvoiceDirection.Outbound ? invoice.SupplierStreet : invoice.ClientStreet)<br>
+                                    @(invoice.Direction == InvoiceDirection.Outbound ? invoice.SupplierZip : invoice.ClientZip) @(invoice.Direction == InvoiceDirection.Outbound ? invoice.SupplierCity : invoice.ClientCity)<br>
+                                    @if (!string.IsNullOrEmpty(invoice.Direction == InvoiceDirection.Outbound ? invoice.SupplierVatNo : invoice.ClientVatNo))
+                                    {
+                                        <small>VAT: @(invoice.Direction == InvoiceDirection.Outbound ? invoice.SupplierVatNo : invoice.ClientVatNo)</small>
+                                    }
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>@(invoice.Direction == InvoiceDirection.Outbound ? "Client" : "Supplier")</h6>
+                                <p class="mb-0">
+                                    @(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientName : invoice.SupplierName)<br>
+                                    @(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientStreet : invoice.SupplierStreet)<br>
+                                    @(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientZip : invoice.SupplierZip) @(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientCity : invoice.SupplierCity)<br>
+                                    @if (!string.IsNullOrEmpty(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientVatNo : invoice.SupplierVatNo))
+                                    {
+                                        <small>VAT: @(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientVatNo : invoice.SupplierVatNo)</small>
+                                    }
+                                </p>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(invoice.Note))
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-12">
+                                    <h6>Note</h6>
+                                    <p>@invoice.Note</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (invoice.Lines.Any())
+                {
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">Invoice Lines</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Item</th>
+                                            <th class="text-end">Quantity</th>
+                                            <th class="text-end">Unit Price</th>
+                                            <th class="text-end">VAT %</th>
+                                            <th class="text-end">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var line in invoice.Lines.OrderBy(l => l.LineOrder))
+                                        {
+                                            <tr>
+                                                <td>@line.Name</td>
+                                                <td class="text-end">@line.Quantity.ToString("N2") @line.UnitName</td>
+                                                <td class="text-end">@line.UnitPriceWithoutVat.ToString("N2")</td>
+                                                <td class="text-end">@line.VatRate.ToString("N0")%</td>
+                                                <td class="text-end"><strong>@line.TotalPriceWithVat.ToString("N2")</strong></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Financial Summary</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm mb-0">
+                            <tr>
+                                <td>Subtotal (excl. VAT):</td>
+                                <td class="text-end">@invoice.Subtotal.ToString("N2")</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Total (incl. VAT):</strong></td>
+                                <td class="text-end"><strong>@invoice.Total.ToString("N2") @invoice.Currency</strong></td>
+                            </tr>
+                            @if (invoice.RemainingAmount < invoice.Total)
+                            {
+                                <tr>
+                                    <td>Paid:</td>
+                                    <td class="text-end text-success">@((invoice.Total - invoice.RemainingAmount).ToString("N2"))</td>
+                                </tr>
+                            }
+                            @if (invoice.RemainingAmount > 0)
+                            {
+                                <tr class="@(invoice.Overdue ? "table-danger" : "")">
+                                    <td>Remaining:</td>
+                                    <td class="text-end">@invoice.RemainingAmount.ToString("N2")</td>
+                                </tr>
+                            }
+                        </table>
+                    </div>
+                </div>
+
+                @if (invoice.Payments.Any())
+                {
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">Payments</h5>
+                        </div>
+                        <div class="card-body">
+                            @foreach (var payment in invoice.Payments.OrderByDescending(p => p.PaidOn))
+                            {
+                                <div class="mb-2">
+                                    <strong>@payment.Amount.ToString("N2") @payment.Currency</strong><br>
+                                    <small class="text-muted">
+                                        @payment.PaidOn.ToString("yyyy-MM-dd")
+                                        @if (!string.IsNullOrEmpty(payment.VariableSymbol))
+                                        {
+                                            <span> | VS: @payment.VariableSymbol</span>
+                                        }
+                                    </small>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(invoice.VariableSymbol) || !string.IsNullOrEmpty(invoice.Iban))
+                {
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">Payment Details</h5>
+                        </div>
+                        <div class="card-body">
+                            @if (!string.IsNullOrEmpty(invoice.VariableSymbol))
+                            {
+                                <p><strong>Variable Symbol:</strong><br>@invoice.VariableSymbol</p>
+                            }
+                            @if (!string.IsNullOrEmpty(invoice.Iban))
+                            {
+                                <p><strong>IBAN:</strong><br>@invoice.Iban</p>
+                            }
+                            @if (!string.IsNullOrEmpty(invoice.BankAccount))
+                            {
+                                <p><strong>Bank Account:</strong><br>@invoice.BankAccount</p>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Metadata</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-1"><small><strong>Imported:</strong><br>@invoice.ImportedAt.ToString("yyyy-MM-dd HH:mm")</small></p>
+                        @if (invoice.LastModifiedAt.HasValue)
+                        {
+                            <p class="mb-0"><small><strong>Last Modified:</strong><br>@invoice.LastModifiedAt.Value.ToString("yyyy-MM-dd HH:mm")</small></p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid InvoiceId { get; set; }
+
+    private Invoice? invoice;
+    private bool isLoading = true;
+    private bool isResyncing = false;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoiceDetails();
+    }
+
+    private async Task LoadInvoiceDetails()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            invoice = await InvoiceManagementService.GetInvoiceDetailsAsync(InvoiceId);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading invoice details: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ResyncFromFakturoid()
+    {
+        try
+        {
+            isResyncing = true;
+            await InvoiceImportService.ResyncFromFakturoidAsync(InvoiceId);
+            await LoadInvoiceDetails();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error resyncing invoice: {ex.Message}";
+        }
+        finally
+        {
+            isResyncing = false;
+        }
+    }
+}

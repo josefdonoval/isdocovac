@@ -1,0 +1,335 @@
+@page "/isdoc/parsed"
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Services
+@using Isdocovac.Providers
+@using Microsoft.AspNetCore.Authorization
+@inject IParsedInvoiceService ParsedInvoiceService
+@inject IInvoiceImportService InvoiceImportService
+@inject IParsedInvoiceProcessingProvider ProcessingProvider
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Parsed ISDOC Invoices</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1>Parsed ISDOC Invoices</h1>
+            <p class="text-muted">Review and import ISDOC invoices</p>
+        </div>
+        <button class="btn btn-primary" @onclick="NavigateToUpload">
+            Upload New ISDOC
+        </button>
+    </div>
+
+    <div class="mb-3">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn @(selectedStatus == null ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => FilterByStatus(null)">
+                All
+            </button>
+            <button type="button" class="btn @(selectedStatus == ParsedInvoiceStatus.Parsed ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => FilterByStatus(ParsedInvoiceStatus.Parsed)">
+                Parsed
+            </button>
+            <button type="button" class="btn @(selectedStatus == ParsedInvoiceStatus.ReadyToImport ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => FilterByStatus(ParsedInvoiceStatus.ReadyToImport)">
+                Ready to Import
+            </button>
+            <button type="button" class="btn @(selectedStatus == ParsedInvoiceStatus.Imported ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => FilterByStatus(ParsedInvoiceStatus.Imported)">
+                Imported
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading parsed invoices...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">
+            @errorMessage
+        </div>
+    }
+    else if (parsedInvoices == null || !parsedInvoices.Any())
+    {
+        <div class="alert alert-info">
+            <h4 class="alert-heading">No parsed invoices found</h4>
+            <p>
+                @if (selectedStatus.HasValue)
+                {
+                    <span>No invoices with status "@selectedStatus.Value". Try a different filter or upload new ISDOC files.</span>
+                }
+                else
+                {
+                    <span>You haven't uploaded any ISDOC invoices yet. Click the button above to upload your first invoice.</span>
+                }
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Invoice Number</th>
+                        <th>Issued Date</th>
+                        <th>Supplier</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Uploaded</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var parsedInvoice in parsedInvoices)
+                    {
+                        <tr>
+                            <td>
+                                @if (!string.IsNullOrEmpty(parsedInvoice.InvoiceNumber))
+                                {
+                                    <strong>@parsedInvoice.InvoiceNumber</strong>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                                <br>
+                                <small class="text-muted">@parsedInvoice.FileName</small>
+                            </td>
+                            <td>@(parsedInvoice.IssuedOn?.ToString("yyyy-MM-dd") ?? "-")</td>
+                            <td>@(parsedInvoice.SupplierName ?? "-")</td>
+                            <td>
+                                @if (parsedInvoice.Total.HasValue)
+                                {
+                                    <strong>@parsedInvoice.Total.Value.ToString("N2") @(parsedInvoice.Currency ?? "CZK")</strong>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td>
+                                @switch (parsedInvoice.Status)
+                                {
+                                    case ParsedInvoiceStatus.Uploaded:
+                                        <span class="badge bg-secondary">Uploaded</span>
+                                        break;
+                                    case ParsedInvoiceStatus.Parsing:
+                                        <span class="badge bg-info">Parsing</span>
+                                        break;
+                                    case ParsedInvoiceStatus.Parsed:
+                                        @if (parsedInvoice.IsValid)
+                                        {
+                                            <span class="badge bg-success">Parsed</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning">Parsed (Invalid)</span>
+                                        }
+                                        break;
+                                    case ParsedInvoiceStatus.ValidationFailed:
+                                        <span class="badge bg-danger">Validation Failed</span>
+                                        break;
+                                    case ParsedInvoiceStatus.ReadyToImport:
+                                        <span class="badge bg-primary">Ready to Import</span>
+                                        break;
+                                    case ParsedInvoiceStatus.Imported:
+                                        <span class="badge bg-success">Imported</span>
+                                        break;
+                                }
+                            </td>
+                            <td>@parsedInvoice.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    @if (parsedInvoice.Status == ParsedInvoiceStatus.Imported && parsedInvoice.ImportedInvoiceId.HasValue)
+                                    {
+                                        <a href="/invoices/@parsedInvoice.ImportedInvoiceId" class="btn btn-sm btn-primary">
+                                            View Invoice
+                                        </a>
+                                    }
+                                    else if (parsedInvoice.Status == ParsedInvoiceStatus.Parsed || parsedInvoice.Status == ParsedInvoiceStatus.ReadyToImport)
+                                    {
+                                        @if (parsedInvoice.IsValid)
+                                        {
+                                            <button class="btn btn-outline-success"
+                                                    @onclick="() => ImportParsedInvoice(parsedInvoice.Id)"
+                                                    disabled="@importingInvoices.Contains(parsedInvoice.Id)">
+                                                @if (importingInvoices.Contains(parsedInvoice.Id))
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                                    <span>Importing...</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Import</span>
+                                                }
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-outline-secondary" disabled title="Cannot import invalid invoice">
+                                                Invalid
+                                            </button>
+                                        }
+                                    }
+                                    else if (parsedInvoice.Status == ParsedInvoiceStatus.Uploaded || parsedInvoice.Status == ParsedInvoiceStatus.ValidationFailed)
+                                    {
+                                        <button class="btn btn-outline-primary" @onclick="() => StartParsing(parsedInvoice.Id)" title="Parse">
+                                            Re-parse
+                                        </button>
+                                    }
+
+                                    <button class="btn btn-outline-danger" @onclick="() => DeleteParsedInvoice(parsedInvoice.Id)" title="Delete">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        @if (!string.IsNullOrEmpty(parsedInvoice.ValidationErrors) && !parsedInvoice.IsValid)
+                        {
+                            <tr>
+                                <td colspan="7" class="bg-light">
+                                    <div class="p-2">
+                                        <small class="text-danger">
+                                            <strong>Validation Errors:</strong><br>
+                                            @parsedInvoice.ValidationErrors
+                                        </small>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationStateTask { get; set; }
+
+    private List<ParsedInvoice>? parsedInvoices;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private Guid userId;
+    private ParsedInvoiceStatus? selectedStatus = null;
+    private HashSet<Guid> importingInvoices = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await authenticationStateTask!;
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+
+        if (userIdClaim == null)
+        {
+            NavigationManager.NavigateTo("/auth/login");
+            return;
+        }
+
+        userId = Guid.Parse(userIdClaim.Value);
+        await LoadParsedInvoices();
+    }
+
+    private async Task LoadParsedInvoices()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            parsedInvoices = (await ParsedInvoiceService.GetUserParsedInvoicesAsync(userId, selectedStatus)).ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading parsed invoices: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task FilterByStatus(ParsedInvoiceStatus? status)
+    {
+        selectedStatus = status;
+        await LoadParsedInvoices();
+    }
+
+    private async Task ImportParsedInvoice(Guid parsedInvoiceId)
+    {
+        importingInvoices.Add(parsedInvoiceId);
+        StateHasChanged();
+
+        try
+        {
+            var invoice = await InvoiceImportService.ImportFromParsedInvoiceAsync(parsedInvoiceId, userId);
+            errorMessage = null;
+            await LoadParsedInvoices();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error importing invoice: {ex.Message}";
+        }
+        finally
+        {
+            importingInvoices.Remove(parsedInvoiceId);
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartParsing(Guid parsedInvoiceId)
+    {
+        try
+        {
+            await ParsedInvoiceService.StartParsingAsync(parsedInvoiceId);
+            errorMessage = "Parsing started. This may take a moment...";
+            await LoadParsedInvoices();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error starting parsing: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteParsedInvoice(Guid parsedInvoiceId)
+    {
+        if (!confirm("Are you sure you want to delete this parsed invoice?"))
+            return;
+
+        try
+        {
+            await ParsedInvoiceService.DeleteAsync(parsedInvoiceId);
+            await LoadParsedInvoices();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting invoice: {ex.Message}";
+        }
+    }
+
+    private void NavigateToUpload()
+    {
+        NavigationManager.NavigateTo("/upload-invoice");
+    }
+
+    private bool confirm(string message)
+    {
+        // In a real application, you'd use JavaScript interop for confirmation
+        // For now, we'll just return true
+        return true;
+    }
+}

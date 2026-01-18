@@ -9,10 +9,13 @@ public interface IFakturoidInvoiceProvider
     Task<FakturoidInvoice?> GetByIdAsync(Guid invoiceId);
     Task<FakturoidInvoice?> GetByFakturoidIdAsync(Guid connectionId, int fakturoidId);
     Task<IEnumerable<FakturoidInvoice>> GetByConnectionIdAsync(Guid connectionId, int page = 1, int pageSize = 40);
+    Task<IEnumerable<FakturoidInvoice>> GetUnimportedByConnectionIdAsync(Guid connectionId, int page = 1, int pageSize = 40);
     Task<FakturoidInvoice> CreateOrUpdateAsync(Guid connectionId, FakturoidInvoice invoice);
     Task DeleteAsync(Guid invoiceId);
     Task<int> GetTotalCountAsync(Guid connectionId);
     Task<DateTime?> GetLastSyncedTimeAsync(Guid connectionId);
+    Task MarkAsImportedAsync(Guid fakturoidInvoiceId, Guid importedInvoiceId);
+    Task<bool> IsImportedAsync(Guid fakturoidInvoiceId);
 }
 
 public class FakturoidInvoiceProvider : IFakturoidInvoiceProvider
@@ -138,5 +141,36 @@ public class FakturoidInvoiceProvider : IFakturoidInvoiceProvider
         return await context.FakturoidInvoices
             .Where(i => i.FakturoidConnectionId == connectionId)
             .MaxAsync(i => (DateTime?)i.LastSyncedAt);
+    }
+
+    public async Task<IEnumerable<FakturoidInvoice>> GetUnimportedByConnectionIdAsync(Guid connectionId, int page = 1, int pageSize = 40)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.FakturoidInvoices
+            .Where(i => i.FakturoidConnectionId == connectionId && !i.IsImported)
+            .OrderByDescending(i => i.IssuedOn)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+
+    public async Task MarkAsImportedAsync(Guid fakturoidInvoiceId, Guid importedInvoiceId)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        var invoice = await context.FakturoidInvoices.FindAsync(fakturoidInvoiceId);
+        if (invoice != null)
+        {
+            invoice.IsImported = true;
+            invoice.ImportedToInvoiceAt = DateTime.UtcNow;
+            invoice.ImportedInvoiceId = importedInvoiceId;
+            await context.SaveChangesAsync();
+        }
+    }
+
+    public async Task<bool> IsImportedAsync(Guid fakturoidInvoiceId)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        var invoice = await context.FakturoidInvoices.FindAsync(fakturoidInvoiceId);
+        return invoice?.IsImported ?? false;
     }
 }

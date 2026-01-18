@@ -43,10 +43,15 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 
 // Register application providers
 builder.Services.AddScoped<IUserProvider, UserProvider>();
+builder.Services.AddScoped<IMainInvoiceProvider, MainInvoiceProvider>();
+builder.Services.AddScoped<IParsedInvoiceProvider, ParsedInvoiceProvider>();
+builder.Services.AddScoped<IParsedInvoiceProcessingProvider, ParsedInvoiceProcessingProvider>();
+builder.Services.AddScoped<IAzureBlobStorageProvider, AzureBlobStorageProvider>();
+
+// Legacy providers (will be removed after migration)
 builder.Services.AddScoped<IInvoiceProvider, InvoiceProvider>();
 builder.Services.AddScoped<IParsedIsdocProvider, ParsedIsdocProvider>();
 builder.Services.AddScoped<IInvoiceProcessingProvider, InvoiceProcessingProvider>();
-builder.Services.AddScoped<IAzureBlobStorageProvider, AzureBlobStorageProvider>();
 
 // Register authentication providers
 builder.Services.AddScoped<IAuthTokenProvider, AuthTokenProvider>();
@@ -80,6 +85,11 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 
 // Register application services
+builder.Services.AddScoped<IInvoiceImportService, InvoiceImportService>();
+builder.Services.AddScoped<IInvoiceManagementService, InvoiceManagementService>();
+builder.Services.AddScoped<IParsedInvoiceService, ParsedInvoiceService>();
+
+// Legacy services (will be removed after migration)
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 
 var app = builder.Build();

@@ -120,9 +120,15 @@ public class FakturoidInvoice
     public DateTime LastSyncedAt { get; set; } // Last time we synced from Fakturoid
     public DateTime? FakturoidUpdatedAt { get; set; } // updated_at from Fakturoid API
 
+    // Import Tracking (to main Invoice table)
+    public DateTime? ImportedToInvoiceAt { get; set; }
+    public Guid? ImportedInvoiceId { get; set; }  // FK to Invoice (nullable)
+    public bool IsImported { get; set; } = false;  // Quick flag for filtering
+
     // Navigation properties
     public FakturoidConnection Connection { get; set; } = null!;
     public ICollection<FakturoidInvoiceLine> Lines { get; set; } = new List<FakturoidInvoiceLine>();
     public ICollection<FakturoidInvoicePayment> Payments { get; set; } = new List<FakturoidInvoicePayment>();
     public ICollection<FakturoidInvoiceAttachment> Attachments { get; set; } = new List<FakturoidInvoiceAttachment>();
+    public Invoice? ImportedInvoice { get; set; }  // NEW
 }

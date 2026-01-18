@@ -1,0 +1,275 @@
+@page "/invoices"
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IInvoiceManagementService InvoiceManagementService
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Invoices</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Invoices</h1>
+            <p class="text-muted">All imported invoices from Fakturoid and ISDOC sources</p>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn @(selectedDirection == null ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => FilterByDirection(null)">
+                    All Invoices
+                </button>
+                <button type="button" class="btn @(selectedDirection == InvoiceDirection.Inbound ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => FilterByDirection(InvoiceDirection.Inbound)">
+                    Inbound (Received)
+                </button>
+                <button type="button" class="btn @(selectedDirection == InvoiceDirection.Outbound ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => FilterByDirection(InvoiceDirection.Outbound)">
+                    Outbound (Issued)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading invoices...</p>
+        </div>
+    }
+    else if (errorMessage != null)
+    {
+        <div class="alert alert-danger" role="alert">
+            @errorMessage
+        </div>
+    }
+    else if (!invoices.Any())
+    {
+        <div class="alert alert-info" role="alert">
+            <h4 class="alert-heading">No invoices found</h4>
+            <p>You haven't imported any invoices yet.</p>
+            <hr>
+            <p class="mb-0">
+                <a href="/fakturoid/staging" class="alert-link">Import from Fakturoid</a> or
+                <a href="/isdoc/parsed" class="alert-link">Upload ISDOC files</a>
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Date Issued</th>
+                                <th>Due Date</th>
+                                <th>Client/Supplier</th>
+                                <th class="text-end">Total</th>
+                                <th>Status</th>
+                                <th>Direction</th>
+                                <th>Source</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var invoice in invoices)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@invoice.Number</strong>
+                                        @if (!string.IsNullOrEmpty(invoice.CustomId))
+                                        {
+                                            <br><small class="text-muted">@invoice.CustomId</small>
+                                        }
+                                    </td>
+                                    <td>@(invoice.IssuedOn?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                    <td>
+                                        @if (invoice.DueOn.HasValue)
+                                        {
+                                            @invoice.DueOn.Value.ToString("yyyy-MM-dd")
+                                            @if (invoice.Overdue)
+                                            {
+                                                <span class="badge bg-danger ms-1">Overdue</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span>-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @(invoice.Direction == InvoiceDirection.Outbound ? invoice.ClientName : invoice.SupplierName)
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>@invoice.Total.ToString("N2") @invoice.Currency</strong>
+                                        @if (invoice.RemainingAmount > 0 && invoice.RemainingAmount < invoice.Total)
+                                        {
+                                            <br><small class="text-muted">Remaining: @invoice.RemainingAmount.ToString("N2")</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (invoice.Paid)
+                                        {
+                                            <span class="badge bg-success">Paid</span>
+                                        }
+                                        else if (invoice.Cancelled)
+                                        {
+                                            <span class="badge bg-secondary">Cancelled</span>
+                                        }
+                                        else if (invoice.Overdue)
+                                        {
+                                            <span class="badge bg-danger">Overdue</span>
+                                        }
+                                        else if (invoice.Sent)
+                                        {
+                                            <span class="badge bg-info">Sent</span>
+                                        }
+                                        else if (invoice.Open)
+                                        {
+                                            <span class="badge bg-warning">Open</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (invoice.Direction == InvoiceDirection.Inbound)
+                                        {
+                                            <span class="badge bg-primary">Inbound</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Outbound</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (invoice.Source == InvoiceSource.Fakturoid)
+                                        {
+                                            <span class="badge bg-info">Fakturoid</span>
+                                        }
+                                        else if (invoice.Source == InvoiceSource.ISDOC)
+                                        {
+                                            <span class="badge bg-success">ISDOC</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Manual</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" @onclick="() => ViewDetails(invoice.Id)">
+                                            View
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (totalPages > 1)
+                {
+                    <nav aria-label="Invoice pagination">
+                        <ul class="pagination justify-content-center">
+                            <li class="page-item @(currentPage == 1 ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(currentPage - 1)" disabled="@(currentPage == 1)">
+                                    Previous
+                                </button>
+                            </li>
+                            @for (int i = 1; i <= totalPages; i++)
+                            {
+                                var pageNum = i;
+                                <li class="page-item @(currentPage == pageNum ? "active" : "")">
+                                    <button class="page-link" @onclick="() => ChangePage(pageNum)">@pageNum</button>
+                                </li>
+                            }
+                            <li class="page-item @(currentPage == totalPages ? "disabled" : "")">
+                                <button class="page-link" @onclick="() => ChangePage(currentPage + 1)" disabled="@(currentPage == totalPages)">
+                                    Next
+                                </button>
+                            </li>
+                        </ul>
+                    </nav>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Invoice> invoices = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private InvoiceDirection? selectedDirection = null;
+    private int currentPage = 1;
+    private int pageSize = 50;
+    private int totalInvoices = 0;
+    private int totalPages = 0;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInvoices();
+    }
+
+    private async Task LoadInvoices()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+
+            var authState = await AuthenticationStateTask!;
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            invoices = (await InvoiceManagementService.GetUserInvoicesAsync(userId, selectedDirection, currentPage, pageSize)).ToList();
+            totalInvoices = await InvoiceManagementService.GetUserInvoiceCountAsync(userId, selectedDirection);
+            totalPages = (int)Math.Ceiling((double)totalInvoices / pageSize);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading invoices: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task FilterByDirection(InvoiceDirection? direction)
+    {
+        selectedDirection = direction;
+        currentPage = 1;
+        await LoadInvoices();
+    }
+
+    private async Task ChangePage(int page)
+    {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        await LoadInvoices();
+    }
+
+    private void ViewDetails(Guid invoiceId)
+    {
+        NavigationManager.NavigateTo($"/invoices/{invoiceId}");
+    }
+}

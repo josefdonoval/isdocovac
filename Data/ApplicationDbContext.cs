@@ -12,12 +12,23 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<User> Users { get; set; }
+
+    // Main Invoice Tables
+    public DbSet<Invoice> Invoices { get; set; }
+    public DbSet<InvoiceLine> InvoiceLines { get; set; }
+    public DbSet<InvoicePayment> InvoicePayments { get; set; }
+    public DbSet<InvoiceAttachment> InvoiceAttachments { get; set; }
+
+    // ISDOC Upload/Parsing (Staging)
+    public DbSet<ParsedInvoice> ParsedInvoices { get; set; }
+    public DbSet<ParsedInvoiceProcessing> ParsedInvoiceProcessings { get; set; }
+
+    // Legacy - will be removed after migrations
     public DbSet<InvoiceUpload> InvoiceUploads { get; set; }
     public DbSet<ParsedIsdoc> ParsedIsdocs { get; set; }
     public DbSet<InvoiceProcessing> InvoiceProcessings { get; set; }
-    public DbSet<AuthenticationToken> AuthenticationTokens { get; set; }
-    public DbSet<UserSession> UserSessions { get; set; }
-    public DbSet<LoginAttempt> LoginAttempts { get; set; }
+
+    // Fakturoid Integration (Staging)
     public DbSet<FakturoidConnection> FakturoidConnections { get; set; }
     public DbSet<FakturoidOAuthState> FakturoidOAuthStates { get; set; }
     public DbSet<FakturoidInvoice> FakturoidInvoices { get; set; }
@@ -25,9 +36,17 @@ public class ApplicationDbContext : DbContext
     public DbSet<FakturoidInvoicePayment> FakturoidInvoicePayments { get; set; }
     public DbSet<FakturoidInvoiceAttachment> FakturoidInvoiceAttachments { get; set; }
 
+    // Authentication
+    public DbSet<AuthenticationToken> AuthenticationTokens { get; set; }
+    public DbSet<UserSession> UserSessions { get; set; }
+    public DbSet<LoginAttempt> LoginAttempts { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // NOTE: Most entity configurations are now defined using attributes on the model classes
+        // This section only contains configurations that cannot be expressed via attributes
 
         // User configuration
         modelBuilder.Entity<User>(entity =>
