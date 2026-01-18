@@ -18,6 +18,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<AuthenticationToken> AuthenticationTokens { get; set; }
     public DbSet<UserSession> UserSessions { get; set; }
     public DbSet<LoginAttempt> LoginAttempts { get; set; }
+    public DbSet<FakturoidConnection> FakturoidConnections { get; set; }
+    public DbSet<FakturoidOAuthState> FakturoidOAuthStates { get; set; }
+    public DbSet<FakturoidInvoice> FakturoidInvoices { get; set; }
+    public DbSet<FakturoidInvoiceLine> FakturoidInvoiceLines { get; set; }
+    public DbSet<FakturoidInvoicePayment> FakturoidInvoicePayments { get; set; }
+    public DbSet<FakturoidInvoiceAttachment> FakturoidInvoiceAttachments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -149,6 +155,164 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.AttemptedAt).IsRequired();
             entity.Property(e => e.WasSuccessful).IsRequired();
             entity.Property(e => e.FailureReason).HasMaxLength(500);
+        });
+
+        // FakturoidConnection configuration
+        modelBuilder.Entity<FakturoidConnection>(entity =>
+        {
+            entity.ToTable("fakturoid_connections");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.HasIndex(e => e.AccountSlug);
+            entity.HasIndex(e => new { e.UserId, e.IsActive });
+            entity.Property(e => e.AccessToken).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.RefreshToken).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.AccountSlug).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.AccountName).HasMaxLength(500);
+            entity.Property(e => e.IsActive).IsRequired();
+            entity.Property(e => e.ConnectedAt).IsRequired();
+            entity.Property(e => e.AccessTokenExpiresAt).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FakturoidOAuthState configuration
+        modelBuilder.Entity<FakturoidOAuthState>(entity =>
+        {
+            entity.ToTable("fakturoid_oauth_states");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.StateHash }).IsUnique();
+            entity.HasIndex(e => e.ExpiresAt);
+            entity.Property(e => e.StateHash).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.ExpiresAt).IsRequired();
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FakturoidInvoice configuration
+        modelBuilder.Entity<FakturoidInvoice>(entity =>
+        {
+            entity.ToTable("fakturoid_invoices");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.FakturoidConnectionId);
+            entity.HasIndex(e => e.FakturoidId);
+            entity.HasIndex(e => new { e.FakturoidConnectionId, e.FakturoidId }).IsUnique();
+            entity.HasIndex(e => e.UpdatedAt);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.IssuedOn);
+            entity.HasIndex(e => e.DueOn);
+            entity.HasIndex(e => new { e.FakturoidConnectionId, e.LastSyncedAt });
+
+            entity.Property(e => e.Number).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Token).HasMaxLength(100);
+            entity.Property(e => e.DocumentType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.ClientName).HasMaxLength(500);
+            entity.Property(e => e.ClientStreet).HasMaxLength(500);
+            entity.Property(e => e.ClientCity).HasMaxLength(255);
+            entity.Property(e => e.ClientZip).HasMaxLength(20);
+            entity.Property(e => e.ClientCountry).HasMaxLength(100);
+            entity.Property(e => e.ClientRegistrationNo).HasMaxLength(100);
+            entity.Property(e => e.ClientVatNo).HasMaxLength(100);
+            entity.Property(e => e.YourName).HasMaxLength(500);
+            entity.Property(e => e.VariableSymbol).HasMaxLength(50);
+            entity.Property(e => e.HtmlUrl).HasMaxLength(1000);
+            entity.Property(e => e.PublicHtmlUrl).HasMaxLength(1000);
+
+            entity.Property(e => e.Subtotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Total).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RemainingAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NativeSubtotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NativeTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.NativeRemainingAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ExchangeRate).HasColumnType("decimal(18,6)");
+
+            entity.Property(e => e.Tags).HasColumnType("jsonb");
+            entity.Property(e => e.VatRatesSummary).HasColumnType("jsonb");
+            entity.Property(e => e.NativeVatRatesSummary).HasColumnType("jsonb");
+            entity.Property(e => e.PaidAdvances).HasColumnType("jsonb");
+
+            entity.HasOne(e => e.Connection)
+                .WithMany(c => c.Invoices)
+                .HasForeignKey(e => e.FakturoidConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FakturoidInvoiceLine configuration
+        modelBuilder.Entity<FakturoidInvoiceLine>(entity =>
+        {
+            entity.ToTable("fakturoid_invoice_lines");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.FakturoidInvoiceId);
+            entity.HasIndex(e => new { e.FakturoidInvoiceId, e.LineOrder });
+
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.UnitName).HasMaxLength(50);
+            entity.Property(e => e.Sku).HasMaxLength(100);
+            entity.Property(e => e.LineOrder).IsRequired();
+
+            entity.Property(e => e.Quantity).HasColumnType("decimal(18,4)");
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.VatRate).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.UnitPriceWithoutVat).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.UnitPriceWithVat).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalPriceWithoutVat).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalVat).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalPriceWithVat).HasColumnType("decimal(18,2)");
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.Lines)
+                .HasForeignKey(e => e.FakturoidInvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FakturoidInvoicePayment configuration
+        modelBuilder.Entity<FakturoidInvoicePayment>(entity =>
+        {
+            entity.ToTable("fakturoid_invoice_payments");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.FakturoidInvoiceId);
+            entity.HasIndex(e => e.FakturoidPaymentId);
+            entity.HasIndex(e => new { e.FakturoidInvoiceId, e.FakturoidPaymentId }).IsUnique();
+            entity.HasIndex(e => e.PaidOn);
+
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.VariableSymbol).HasMaxLength(50);
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)").IsRequired();
+            entity.Property(e => e.NativeAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PaidOn).IsRequired();
+            entity.Property(e => e.ImportedAt).IsRequired();
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.Payments)
+                .HasForeignKey(e => e.FakturoidInvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FakturoidInvoiceAttachment configuration
+        modelBuilder.Entity<FakturoidInvoiceAttachment>(entity =>
+        {
+            entity.ToTable("fakturoid_invoice_attachments");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.FakturoidInvoiceId);
+
+            entity.Property(e => e.Filename).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.DownloadUrl).IsRequired().HasMaxLength(2048);
+            entity.Property(e => e.ImportedAt).IsRequired();
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.Attachments)
+                .HasForeignKey(e => e.FakturoidInvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

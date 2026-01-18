@@ -3,6 +3,7 @@ using System;
 using Isdocovac.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Isdocovac.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260117180437_AddFakturoidIntegration")]
+    partial class AddFakturoidIntegration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -576,36 +579,6 @@ namespace Isdocovac.Data.Migrations
                     b.ToTable("fakturoid_invoice_payments", (string)null);
                 });
 
-            modelBuilder.Entity("Isdocovac.Models.FakturoidOAuthState", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("StateHash")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExpiresAt");
-
-                    b.HasIndex("UserId", "StateHash")
-                        .IsUnique();
-
-                    b.ToTable("fakturoid_oauth_states", (string)null);
-                });
-
             modelBuilder.Entity("Isdocovac.Models.InvoiceProcessing", b =>
                 {
                     b.Property<Guid>("Id")
@@ -936,15 +909,6 @@ namespace Isdocovac.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Invoice");
-                });
-
-            modelBuilder.Entity("Isdocovac.Models.FakturoidOAuthState", b =>
-                {
-                    b.HasOne("Isdocovac.Models.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Isdocovac.Models.InvoiceProcessing", b =>

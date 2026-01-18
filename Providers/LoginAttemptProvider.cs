@@ -4,6 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Isdocovac.Providers;
 
+public interface ILoginAttemptProvider
+{
+    Task RecordAttemptAsync(string email, string? ipAddress, bool wasSuccessful, string? failureReason = null);
+    Task<IEnumerable<LoginAttempt>> GetRecentAttemptsByEmailAsync(string email, int minutes);
+    Task<IEnumerable<LoginAttempt>> GetRecentAttemptsByIpAsync(string ipAddress, int minutes);
+}
+
 public class LoginAttemptProvider : ILoginAttemptProvider
 {
     private readonly ApplicationDbContext _context;

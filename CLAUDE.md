@@ -70,17 +70,40 @@ All pages are in **Components/Pages/** with `@page` directive for routing:
 
 ### Business Logic Layer
 
-- **Services/**: Contains service interfaces and implementations
+**Code Organization**: Interfaces and implementations are co-located in the same file. Each provider/service file contains both the interface definition (at the top) and its implementation class.
+
+- **Services/**: Contains business logic services
   - Services are registered in [Program.cs](Program.cs) using dependency injection
   - Use `@inject` directive in Razor components to access services
-  - Example: `IWeatherService` provides weather forecast data to components
+  - **Authentication Services** (`Services/Authentication/`):
+    - `MagicLinkService`: Magic link token generation and validation
+    - `SessionService`: User session management
+  - **Email Services** (`Services/Email/`):
+    - `LoopsEmailService`: Email delivery via Loops API
+  - **Security Services** (`Services/Security/`):
+    - `RateLimitService`: Rate limiting for authentication attempts
+  - **Fakturoid Services** (`Services/Fakturoid/`):
+    - `FakturoidOAuthService`: OAuth flow with Fakturoid API
+    - `FakturoidApiService`: Fakturoid API integration for fetching invoices
+    - `FakturoidSyncService`: Invoice synchronization from Fakturoid
 
 - **Providers/**: Data access layer wrapping Entity Framework DbContext
-  - `IUserProvider` / `UserProvider`: User management and authentication
-  - `IInvoiceProvider` / `InvoiceProvider`: Invoice upload management with Azure Blob Storage integration
-  - `IParsedIsdocProvider` / `ParsedIsdocProvider`: Parsed ISDOC data management
-  - `IAzureBlobStorageProvider` / `AzureBlobStorageProvider`: Azure Blob Storage file operations
   - Providers handle all database operations and are injected into services/components
+  - **Authentication Providers**:
+    - `UserProvider`: User management and authentication
+    - `AuthTokenProvider`: Magic link token storage and validation
+    - `LoginAttemptProvider`: Login attempt tracking for rate limiting
+    - `SessionProvider`: User session storage (uses IDbContextFactory)
+  - **Invoice Providers**:
+    - `InvoiceProvider`: Invoice upload management with Azure Blob Storage integration
+    - `ParsedIsdocProvider`: Parsed ISDOC data management
+    - `InvoiceProcessingProvider`: Invoice processing workflow
+  - **Fakturoid Providers**:
+    - `FakturoidConnectionProvider`: Fakturoid OAuth connection management
+    - `FakturoidInvoiceProvider`: Fakturoid invoice data storage
+    - `FakturoidOAuthStateProvider`: OAuth state verification
+  - **Storage Providers**:
+    - `AzureBlobStorageProvider`: Azure Blob Storage file operations
 
 - **Models/**: Contains Entity Framework database models
   - `User.cs`: User entity with authentication fields (Id, Username, Email, PasswordHash, PasswordSalt, timestamps)

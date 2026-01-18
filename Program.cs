@@ -4,6 +4,7 @@ using Isdocovac.Providers;
 using Isdocovac.Services;
 using Isdocovac.Services.Authentication;
 using Isdocovac.Services.Email;
+using Isdocovac.Services.Fakturoid;
 using Isdocovac.Services.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -51,6 +52,16 @@ builder.Services.AddScoped<IAzureBlobStorageProvider, AzureBlobStorageProvider>(
 builder.Services.AddScoped<IAuthTokenProvider, AuthTokenProvider>();
 builder.Services.AddScoped<ISessionProvider, SessionProvider>();
 builder.Services.AddScoped<ILoginAttemptProvider, LoginAttemptProvider>();
+
+// Register Fakturoid providers
+builder.Services.AddScoped<IFakturoidConnectionProvider, FakturoidConnectionProvider>();
+builder.Services.AddScoped<IFakturoidInvoiceProvider, FakturoidInvoiceProvider>();
+builder.Services.AddScoped<IFakturoidOAuthStateProvider, FakturoidOAuthStateProvider>();
+
+// Register Fakturoid services
+builder.Services.AddScoped<IFakturoidOAuthService, FakturoidOAuthService>();
+builder.Services.AddScoped<IFakturoidApiService, FakturoidApiService>();
+builder.Services.AddScoped<IFakturoidSyncService, FakturoidSyncService>();
 
 // Register authentication services
 builder.Services.AddScoped<IMagicLinkService, MagicLinkService>();
