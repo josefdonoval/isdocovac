@@ -191,6 +191,12 @@ public class ParsedInvoice
 
     public Guid? ImportedInvoiceId { get; set; }
 
+    // Soft Delete
+    [Required]
+    public bool IsDeleted { get; set; }
+
+    public DateTime? DeletedAt { get; set; }
+
     // Audit
     [Required]
     public DateTime CreatedAt { get; set; }

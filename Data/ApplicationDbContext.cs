@@ -149,8 +149,9 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Invoice soft delete filter
+        // Soft delete filters
         modelBuilder.Entity<Invoice>().HasQueryFilter(i => !i.IsDeleted);
+        modelBuilder.Entity<ParsedInvoice>().HasQueryFilter(p => !p.IsDeleted);
 
         // FakturoidInvoice configuration
         modelBuilder.Entity<FakturoidInvoice>(entity =>

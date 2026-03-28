@@ -135,7 +135,7 @@ public class ParsedInvoiceService : IParsedInvoiceService
         if (parsedInvoice == null)
             return;
 
-        // Delete the imported invoice first (FK constraint: Invoice references ParsedInvoice)
+        // Soft-delete the imported invoice too if it exists
         if (parsedInvoice.ImportedInvoiceId.HasValue)
         {
             await _invoiceProvider.DeleteAsync(parsedInvoice.ImportedInvoiceId.Value);

@@ -211,11 +211,9 @@ public class ParsedInvoiceProvider : IParsedInvoiceProvider
         var parsedInvoice = await _context.ParsedInvoices.FindAsync(parsedInvoiceId);
         if (parsedInvoice != null)
         {
-            // Delete from Azure Blob Storage
-            await _blobStorageProvider.DeleteBlobAsync(parsedInvoice.BlobContainerName, parsedInvoice.BlobName);
-
-            // Delete from database
-            _context.ParsedInvoices.Remove(parsedInvoice);
+            parsedInvoice.IsDeleted = true;
+            parsedInvoice.DeletedAt = DateTime.UtcNow;
+            parsedInvoice.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
     }

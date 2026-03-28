@@ -6,6 +6,7 @@ using Isdocovac.Services.Authentication;
 using Isdocovac.Services.Email;
 using Isdocovac.Services.Fakturoid;
 using Isdocovac.Services.ISDOC;
+using Isdocovac.Services.Claude;
 using Isdocovac.Services.OpenAI;
 using Isdocovac.Services.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -82,11 +83,11 @@ builder.Services.AddMemoryCache();
 // Add HTTP client for email service
 builder.Services.AddHttpClient();
 
-// Add HTTP client for OpenAI
-builder.Services.AddHttpClient("OpenAI");
+// Add HTTP client for Claude
+builder.Services.AddHttpClient("Claude");
 
-// Register OpenAI services
-builder.Services.AddScoped<IOpenAIInvoiceParsingService, OpenAIInvoiceParsingService>();
+// Register Claude invoice parsing service
+builder.Services.AddScoped<IOpenAIInvoiceParsingService, ClaudeInvoiceParsingService>();
 
 // Register ISDOC services
 builder.Services.AddScoped<IIsdocGeneratorService, IsdocGeneratorService>();

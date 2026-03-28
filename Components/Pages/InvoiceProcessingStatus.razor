@@ -81,8 +81,8 @@
                 </div>
                 <div class="card-body">
                     <div class="processing-timeline">
-                        @RenderProcessingStep("UploadingToOpenAI", "Uploading to OpenAI", "bi-cloud-upload")
-                        @RenderProcessingStep("ExtractingData", "Extracting Data with AI", "bi-cpu")
+                        @RenderProcessingStep("UploadingToOpenAI", "Preparing PDF", "bi-cloud-upload")
+                        @RenderProcessingStep("ExtractingData", "Extracting Data with Claude", "bi-cpu")
                         @RenderProcessingStep("GeneratingISDOC", "Generating ISDOC XML", "bi-file-earmark-code")
                         @RenderProcessingStep("ValidatingXSD", "Validating XML Schema", "bi-check-circle")
                     </div>
