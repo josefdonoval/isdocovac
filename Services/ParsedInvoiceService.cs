@@ -21,17 +21,20 @@ public class ParsedInvoiceService : IParsedInvoiceService
 {
     private readonly IParsedInvoiceProvider _parsedInvoiceProvider;
     private readonly IParsedInvoiceProcessingProvider _processingProvider;
+    private readonly IMainInvoiceProvider _invoiceProvider;
     private readonly IPdfInvoiceProcessingService? _pdfProcessingService;
     private readonly IIsdocXmlParsingService? _isdocXmlParsingService;
 
     public ParsedInvoiceService(
         IParsedInvoiceProvider parsedInvoiceProvider,
         IParsedInvoiceProcessingProvider processingProvider,
+        IMainInvoiceProvider invoiceProvider,
         IPdfInvoiceProcessingService? pdfProcessingService = null,
         IIsdocXmlParsingService? isdocXmlParsingService = null)
     {
         _parsedInvoiceProvider = parsedInvoiceProvider;
         _processingProvider = processingProvider;
+        _invoiceProvider = invoiceProvider;
         _pdfProcessingService = pdfProcessingService;
         _isdocXmlParsingService = isdocXmlParsingService;
     }
@@ -128,6 +131,16 @@ public class ParsedInvoiceService : IParsedInvoiceService
 
     public async Task DeleteAsync(Guid parsedInvoiceId)
     {
+        var parsedInvoice = await _parsedInvoiceProvider.GetByIdAsync(parsedInvoiceId);
+        if (parsedInvoice == null)
+            return;
+
+        // Delete the imported invoice first (FK constraint: Invoice references ParsedInvoice)
+        if (parsedInvoice.ImportedInvoiceId.HasValue)
+        {
+            await _invoiceProvider.DeleteAsync(parsedInvoice.ImportedInvoiceId.Value);
+        }
+
         await _parsedInvoiceProvider.DeleteAsync(parsedInvoiceId);
     }
 }

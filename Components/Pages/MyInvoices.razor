@@ -83,7 +83,7 @@
                                     <button class="btn btn-outline-info" @onclick="() => ViewProcessingStatus(invoice.Id)" title="View Details">
                                         Details
                                     </button>
-                                    <button class="btn btn-outline-danger" @onclick="() => DeleteInvoice(invoice.Id)" title="Delete">
+                                    <button class="btn btn-outline-danger" @onclick="() => ConfirmDelete(invoice)" title="Delete">
                                         Delete
                                     </button>
                                 </div>
@@ -94,12 +94,47 @@
             </table>
         </div>
     }
+
+    @if (invoiceToDelete != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirm Deletion</h5>
+                        <button type="button" class="btn-close" @onclick="CancelDelete"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete <strong>@invoiceToDelete.FileName</strong>?</p>
+                        @if (invoiceToDelete.Status == ParsedInvoiceStatus.Imported)
+                        {
+                            <div class="alert alert-warning mb-0">
+                                This invoice has been imported. Deleting it will mark the imported invoice as deleted. It will remain available for audit purposes.
+                            </div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+                        <button type="button" class="btn btn-danger" @onclick="DeleteConfirmed" disabled="@isDeleting">
+                            @if (isDeleting)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            }
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
     private List<ParsedInvoice>? invoices;
     private bool isLoading = true;
+    private bool isDeleting = false;
     private string? errorMessage;
+    private ParsedInvoice? invoiceToDelete;
 
     protected override async Task OnInitializedAsync()
     {
@@ -140,16 +175,35 @@
         }
     }
 
-    private async Task DeleteInvoice(Guid invoiceId)
+    private void ConfirmDelete(ParsedInvoice invoice)
     {
+        invoiceToDelete = invoice;
+    }
+
+    private void CancelDelete()
+    {
+        invoiceToDelete = null;
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (invoiceToDelete == null) return;
+
         try
         {
-            await ParsedInvoiceService.DeleteAsync(invoiceId);
+            isDeleting = true;
+            await ParsedInvoiceService.DeleteAsync(invoiceToDelete.Id);
+            invoiceToDelete = null;
             await LoadInvoices();
         }
         catch (Exception ex)
         {
             errorMessage = $"Error deleting invoice: {ex.Message}";
+            invoiceToDelete = null;
+        }
+        finally
+        {
+            isDeleting = false;
         }
     }
 

@@ -118,7 +118,9 @@ public class MainInvoiceProvider : IMainInvoiceProvider
         var invoice = await _context.Invoices.FindAsync(invoiceId);
         if (invoice != null)
         {
-            _context.Invoices.Remove(invoice);
+            invoice.IsDeleted = true;
+            invoice.DeletedAt = DateTime.UtcNow;
+            invoice.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
     }

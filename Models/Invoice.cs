@@ -185,6 +185,12 @@ public class Invoice
     [Column(TypeName = "jsonb")]
     public string? VatRatesSummary { get; set; } // Array of {vat_rate, base, vat}
 
+    // Soft Delete
+    [Required]
+    public bool IsDeleted { get; set; }
+
+    public DateTime? DeletedAt { get; set; }
+
     // Audit & Sync Tracking
     [Required]
     public DateTime ImportedAt { get; set; }  // When imported to Invoice table
