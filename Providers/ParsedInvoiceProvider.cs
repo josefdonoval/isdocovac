@@ -17,6 +17,13 @@ public interface IParsedInvoiceProvider
     Task<Stream> GetFileContentAsync(Guid parsedInvoiceId);
     Task<string> GetSasUrlAsync(Guid parsedInvoiceId, int expirationMinutes = 60);
     Task DeleteAsync(Guid parsedInvoiceId);
+
+    // PDF processing methods
+    Task UpdateSourceFileTypeAsync(Guid parsedInvoiceId, string sourceFileType);
+    Task UpdateLineModeAsync(Guid parsedInvoiceId, InvoiceLineMode lineMode);
+    Task UpdateOpenAiMetadataAsync(Guid parsedInvoiceId, string model, int promptTokens, int completionTokens, string requestJson, string responseJson);
+    Task UpdateGeneratedIsdocBlobAsync(Guid parsedInvoiceId, string blobName, string blobUrl);
+    Task UpdateTaxableSupplyDateAsync(Guid parsedInvoiceId, DateTime? taxableSupplyDate);
 }
 
 public class ParsedInvoiceProvider : IParsedInvoiceProvider
@@ -209,6 +216,68 @@ public class ParsedInvoiceProvider : IParsedInvoiceProvider
 
             // Delete from database
             _context.ParsedInvoices.Remove(parsedInvoice);
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    // PDF processing method implementations
+    public async Task UpdateSourceFileTypeAsync(Guid parsedInvoiceId, string sourceFileType)
+    {
+        var parsedInvoice = await _context.ParsedInvoices.FindAsync(parsedInvoiceId);
+        if (parsedInvoice != null)
+        {
+            parsedInvoice.SourceFileType = sourceFileType;
+            parsedInvoice.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task UpdateLineModeAsync(Guid parsedInvoiceId, InvoiceLineMode lineMode)
+    {
+        var parsedInvoice = await _context.ParsedInvoices.FindAsync(parsedInvoiceId);
+        if (parsedInvoice != null)
+        {
+            parsedInvoice.LineMode = lineMode;
+            parsedInvoice.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task UpdateOpenAiMetadataAsync(Guid parsedInvoiceId, string model, int promptTokens, int completionTokens, string requestJson, string responseJson)
+    {
+        var parsedInvoice = await _context.ParsedInvoices.FindAsync(parsedInvoiceId);
+        if (parsedInvoice != null)
+        {
+            parsedInvoice.OpenAiModel = model;
+            parsedInvoice.OpenAiPromptTokens = promptTokens;
+            parsedInvoice.OpenAiCompletionTokens = completionTokens;
+            parsedInvoice.OpenAiRequestJson = requestJson;
+            parsedInvoice.OpenAiResponseJson = responseJson;
+            parsedInvoice.OpenAiProcessedAt = DateTime.UtcNow;
+            parsedInvoice.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task UpdateGeneratedIsdocBlobAsync(Guid parsedInvoiceId, string blobName, string blobUrl)
+    {
+        var parsedInvoice = await _context.ParsedInvoices.FindAsync(parsedInvoiceId);
+        if (parsedInvoice != null)
+        {
+            parsedInvoice.GeneratedIsdocBlobName = blobName;
+            parsedInvoice.GeneratedIsdocBlobUrl = blobUrl;
+            parsedInvoice.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task UpdateTaxableSupplyDateAsync(Guid parsedInvoiceId, DateTime? taxableSupplyDate)
+    {
+        var parsedInvoice = await _context.ParsedInvoices.FindAsync(parsedInvoiceId);
+        if (parsedInvoice != null)
+        {
+            parsedInvoice.TaxableSupplyDate = taxableSupplyDate;
+            parsedInvoice.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
     }

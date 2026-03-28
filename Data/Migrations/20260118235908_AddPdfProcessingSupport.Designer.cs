@@ -3,6 +3,7 @@ using System;
 using Isdocovac.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Isdocovac.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260118235908_AddPdfProcessingSupport")]
+    partial class AddPdfProcessingSupport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -989,6 +992,98 @@ namespace Isdocovac.Data.Migrations
                     b.ToTable("invoice_payments");
                 });
 
+            modelBuilder.Entity("Isdocovac.Models.InvoiceProcessing", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("InvoiceUploadId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ParsedIsdocId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceUploadId");
+
+                    b.HasIndex("ParsedIsdocId");
+
+                    b.HasIndex("StartedAt");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("invoice_processings", (string)null);
+                });
+
+            modelBuilder.Entity("Isdocovac.Models.InvoiceUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BlobContainerName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("BlobName")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("BlobUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UploadedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("invoice_uploads", (string)null);
+                });
+
             modelBuilder.Entity("Isdocovac.Models.LoginAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1291,6 +1386,62 @@ namespace Isdocovac.Data.Migrations
                     b.ToTable("parsed_invoice_processings");
                 });
 
+            modelBuilder.Entity("Isdocovac.Models.ParsedIsdoc", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("CustomerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("InvoiceUploadId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsValid")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("IssueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ParsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ParsedData")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SupplierName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<decimal?>("TotalAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ValidationErrors")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceUploadId");
+
+                    b.HasIndex("ParsedAt");
+
+                    b.ToTable("parsed_isdocs", (string)null);
+                });
+
             modelBuilder.Entity("Isdocovac.Models.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1506,6 +1657,35 @@ namespace Isdocovac.Data.Migrations
                     b.Navigation("Invoice");
                 });
 
+            modelBuilder.Entity("Isdocovac.Models.InvoiceProcessing", b =>
+                {
+                    b.HasOne("Isdocovac.Models.InvoiceUpload", "InvoiceUpload")
+                        .WithMany("Processings")
+                        .HasForeignKey("InvoiceUploadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Isdocovac.Models.ParsedIsdoc", "ParsedIsdoc")
+                        .WithMany()
+                        .HasForeignKey("ParsedIsdocId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("InvoiceUpload");
+
+                    b.Navigation("ParsedIsdoc");
+                });
+
+            modelBuilder.Entity("Isdocovac.Models.InvoiceUpload", b =>
+                {
+                    b.HasOne("Isdocovac.Models.User", "User")
+                        .WithMany("InvoiceUploads")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Isdocovac.Models.ParsedInvoice", b =>
                 {
                     b.HasOne("Isdocovac.Models.Invoice", "ImportedInvoice")
@@ -1532,6 +1712,17 @@ namespace Isdocovac.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("ParsedInvoice");
+                });
+
+            modelBuilder.Entity("Isdocovac.Models.ParsedIsdoc", b =>
+                {
+                    b.HasOne("Isdocovac.Models.InvoiceUpload", "InvoiceUpload")
+                        .WithMany("ParsedIsdocs")
+                        .HasForeignKey("InvoiceUploadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InvoiceUpload");
                 });
 
             modelBuilder.Entity("Isdocovac.Models.UserSession", b =>
@@ -1570,6 +1761,13 @@ namespace Isdocovac.Data.Migrations
                     b.Navigation("Payments");
                 });
 
+            modelBuilder.Entity("Isdocovac.Models.InvoiceUpload", b =>
+                {
+                    b.Navigation("ParsedIsdocs");
+
+                    b.Navigation("Processings");
+                });
+
             modelBuilder.Entity("Isdocovac.Models.ParsedInvoice", b =>
                 {
                     b.Navigation("Processings");
@@ -1577,6 +1775,8 @@ namespace Isdocovac.Data.Migrations
 
             modelBuilder.Entity("Isdocovac.Models.User", b =>
                 {
+                    b.Navigation("InvoiceUploads");
+
                     b.Navigation("Sessions");
                 });
 #pragma warning restore 612, 618

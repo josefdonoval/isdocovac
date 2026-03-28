@@ -5,6 +5,8 @@ using Isdocovac.Services;
 using Isdocovac.Services.Authentication;
 using Isdocovac.Services.Email;
 using Isdocovac.Services.Fakturoid;
+using Isdocovac.Services.ISDOC;
+using Isdocovac.Services.OpenAI;
 using Isdocovac.Services.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -49,11 +51,6 @@ builder.Services.AddScoped<IParsedInvoiceProvider, ParsedInvoiceProvider>();
 builder.Services.AddScoped<IParsedInvoiceProcessingProvider, ParsedInvoiceProcessingProvider>();
 builder.Services.AddScoped<IAzureBlobStorageProvider, AzureBlobStorageProvider>();
 
-// Legacy providers (will be removed after migration)
-builder.Services.AddScoped<IInvoiceProvider, InvoiceProvider>();
-builder.Services.AddScoped<IParsedIsdocProvider, ParsedIsdocProvider>();
-builder.Services.AddScoped<IInvoiceProcessingProvider, InvoiceProcessingProvider>();
-
 // Register authentication providers
 builder.Services.AddScoped<IAuthTokenProvider, AuthTokenProvider>();
 builder.Services.AddScoped<ISessionProvider, SessionProvider>();
@@ -85,13 +82,24 @@ builder.Services.AddMemoryCache();
 // Add HTTP client for email service
 builder.Services.AddHttpClient();
 
+// Add HTTP client for OpenAI
+builder.Services.AddHttpClient("OpenAI");
+
+// Register OpenAI services
+builder.Services.AddScoped<IOpenAIInvoiceParsingService, OpenAIInvoiceParsingService>();
+
+// Register ISDOC services
+builder.Services.AddScoped<IIsdocGeneratorService, IsdocGeneratorService>();
+builder.Services.AddScoped<IIsdocValidationService, IsdocValidationService>();
+builder.Services.AddScoped<IIsdocXmlParsingService, IsdocXmlParsingService>();
+
+// Register PDF processing services
+builder.Services.AddScoped<IPdfInvoiceProcessingService, PdfInvoiceProcessingService>();
+
 // Register application services
 builder.Services.AddScoped<IInvoiceImportService, InvoiceImportService>();
 builder.Services.AddScoped<IInvoiceManagementService, InvoiceManagementService>();
 builder.Services.AddScoped<IParsedInvoiceService, ParsedInvoiceService>();
-
-// Legacy services (will be removed after migration)
-builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 
 var app = builder.Build();
 

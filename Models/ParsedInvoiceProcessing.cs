@@ -27,6 +27,13 @@ public class ParsedInvoiceProcessing
     [Required]
     public int AttemptNumber { get; set; }
 
+    // Processing Step Tracking
+    [MaxLength(100)]
+    public string? CurrentStep { get; set; } // "UploadingToOpenAI", "ExtractingData", "GeneratingISDOC", "ValidatingXSD"
+
+    [Column(TypeName = "jsonb")]
+    public string? StepErrorsJson { get; set; } // Detailed errors per step
+
     [ForeignKey(nameof(ParsedInvoiceId))]
     public ParsedInvoice ParsedInvoice { get; set; } = null!;
 }

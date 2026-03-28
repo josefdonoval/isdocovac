@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
+using Isdocovac.Models.OpenAI;
 using Isdocovac.Providers;
 using Microsoft.EntityFrameworkCore;
 
@@ -277,6 +279,35 @@ public class InvoiceImportService : IInvoiceImportService
             // JSON fields
             VatRatesSummary = parsedInvoice.VatRatesSummary,
         };
+
+        // Map invoice lines from LinesJson
+        if (!string.IsNullOrEmpty(parsedInvoice.LinesJson))
+        {
+            var lineItems = JsonSerializer.Deserialize<List<InvoiceLineItem>>(parsedInvoice.LinesJson);
+            if (lineItems != null)
+            {
+                foreach (var line in lineItems)
+                {
+                    invoice.Lines.Add(new InvoiceLine
+                    {
+                        LineOrder = line.LineNumber,
+                        Name = line.Name,
+                        Quantity = line.Quantity,
+                        UnitName = line.UnitName,
+                        UnitPrice = line.UnitPrice,
+                        VatRate = line.VatRate,
+                        UnitPriceWithoutVat = line.UnitPrice,
+                        UnitPriceWithVat = line.VatRate > 0
+                            ? Math.Round(line.UnitPrice * (1 + line.VatRate / 100), 2)
+                            : line.UnitPrice,
+                        TotalPriceWithoutVat = line.TotalPriceWithoutVat,
+                        TotalVat = line.TotalVat,
+                        TotalPriceWithVat = line.TotalPriceWithVat,
+                        Sku = line.Sku
+                    });
+                }
+            }
+        }
 
         // Create the invoice
         var createdInvoice = await _invoiceProvider.CreateAsync(invoice);

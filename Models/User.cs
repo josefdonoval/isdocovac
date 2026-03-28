@@ -14,6 +14,5 @@ public class User
     public DateTime UpdatedAt { get; set; }
 
     // Navigation properties
-    public ICollection<InvoiceUpload> InvoiceUploads { get; set; } = new List<InvoiceUpload>();
     public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
 }

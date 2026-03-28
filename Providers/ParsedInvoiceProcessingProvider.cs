@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Isdocovac.Data;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
@@ -25,6 +26,10 @@ public interface IParsedInvoiceProcessingProvider
     Task FailProcessingAsync(
         Guid processingId,
         string errorMessage);
+
+    // PDF processing step tracking
+    Task UpdateCurrentStepAsync(Guid processingId, string step);
+    Task UpdateStepErrorsAsync(Guid processingId, Dictionary<string, string> stepErrors);
 }
 
 public class ParsedInvoiceProcessingProvider : IParsedInvoiceProcessingProvider
@@ -121,6 +126,27 @@ public class ParsedInvoiceProcessingProvider : IParsedInvoiceProcessingProvider
             processing.Status = ProcessingStatus.Failed;
             processing.ErrorMessage = errorMessage;
             processing.CompletedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    // PDF processing step tracking implementations
+    public async Task UpdateCurrentStepAsync(Guid processingId, string step)
+    {
+        var processing = await _context.ParsedInvoiceProcessings.FindAsync(processingId);
+        if (processing != null)
+        {
+            processing.CurrentStep = step;
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task UpdateStepErrorsAsync(Guid processingId, Dictionary<string, string> stepErrors)
+    {
+        var processing = await _context.ParsedInvoiceProcessings.FindAsync(processingId);
+        if (processing != null)
+        {
+            processing.StepErrorsJson = JsonSerializer.Serialize(stepErrors);
             await _context.SaveChangesAsync();
         }
     }

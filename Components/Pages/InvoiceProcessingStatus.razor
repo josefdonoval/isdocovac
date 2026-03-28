@@ -1,0 +1,426 @@
+@page "/invoice-processing/{ParsedInvoiceId:guid}"
+@using System.Security.Claims
+@using System.Text.Json
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Services
+@using Microsoft.AspNetCore.Authorization
+@inject IParsedInvoiceService ParsedInvoiceService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Processing Status</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Invoice Processing Status</h1>
+        <button class="btn btn-secondary" @onclick="NavigateBack">Back to Invoices</button>
+    </div>
+
+    @if (parsedInvoice == null)
+    {
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">@parsedInvoice.FileName</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>File Size:</strong> @FormatFileSize(parsedInvoice.FileSize)</p>
+                        <p><strong>Uploaded:</strong> @parsedInvoice.UploadedAt.ToLocalTime().ToString("g")</p>
+                        <p><strong>Type:</strong>
+                            @if (parsedInvoice.SourceFileType == "PDF")
+                            {
+                                <span class="badge bg-primary">PDF (AI Processing)</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">ISDOC XML</span>
+                            }
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Status:</strong> @GetStatusBadge(parsedInvoice.Status)</p>
+                        @if (parsedInvoice.LineMode.HasValue)
+                        {
+                            <p><strong>Line Mode:</strong>
+                                @if (parsedInvoice.LineMode == InvoiceLineMode.Detailed)
+                                {
+                                    <span class="badge bg-info">Detailed Lines</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-info">Overall Summary</span>
+                                }
+                            </p>
+                        }
+                        @if (parsedInvoice.OpenAiProcessedAt.HasValue)
+                        {
+                            <p><strong>AI Processed:</strong> @parsedInvoice.OpenAiProcessedAt.Value.ToLocalTime().ToString("g")</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (parsedInvoice.SourceFileType == "PDF" && latestProcessing != null)
+        {
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Processing Steps</h5>
+                </div>
+                <div class="card-body">
+                    <div class="processing-timeline">
+                        @RenderProcessingStep("UploadingToOpenAI", "Uploading to OpenAI", "bi-cloud-upload")
+                        @RenderProcessingStep("ExtractingData", "Extracting Data with AI", "bi-cpu")
+                        @RenderProcessingStep("GeneratingISDOC", "Generating ISDOC XML", "bi-file-earmark-code")
+                        @RenderProcessingStep("ValidatingXSD", "Validating XML Schema", "bi-check-circle")
+                    </div>
+
+                    @if (latestProcessing.Status == ProcessingStatus.InProgress)
+                    {
+                        <div class="alert alert-info mt-3">
+                            <div class="d-flex align-items-center">
+                                <div class="spinner-border spinner-border-sm me-2" role="status">
+                                    <span class="visually-hidden">Processing...</span>
+                                </div>
+                                <span>Processing in progress... Current step: <strong>@(latestProcessing.CurrentStep ?? "Starting")</strong></span>
+                            </div>
+                        </div>
+                    }
+                    else if (latestProcessing.Status == ProcessingStatus.Failed)
+                    {
+                        <div class="alert alert-danger mt-3">
+                            <h6 class="alert-heading">Processing Failed</h6>
+                            <p class="mb-0">@latestProcessing.ErrorMessage</p>
+                            @if (!string.IsNullOrEmpty(latestProcessing.StepErrorsJson))
+                            {
+                                <hr />
+                                <p class="mb-0 small"><strong>Step Errors:</strong></p>
+                                <pre class="small">@latestProcessing.StepErrorsJson</pre>
+                            }
+                            <div class="mt-3">
+                                <button class="btn btn-warning" @onclick="RetryProcessing" disabled="@isRetrying">
+                                    @if (isRetrying)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    }
+                                    Retry Processing
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else if (latestProcessing.Status == ProcessingStatus.Completed)
+                    {
+                        <div class="alert alert-success mt-3">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            Processing completed successfully!
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (parsedInvoice.Status == ParsedInvoiceStatus.ValidationFailed && !string.IsNullOrEmpty(parsedInvoice.ValidationErrors))
+        {
+            <div class="card mb-4">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0">Validation Errors</h5>
+                </div>
+                <div class="card-body">
+                    <pre class="text-danger">@parsedInvoice.ValidationErrors</pre>
+                    <div class="mt-3">
+                        <button class="btn btn-primary" @onclick="NavigateToEdit">
+                            <i class="bi bi-pencil me-2"></i>
+                            Manually Correct Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (parsedInvoice.Status == ParsedInvoiceStatus.Parsed && parsedInvoice.IsValid)
+        {
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Extracted Data</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Invoice Details</h6>
+                            <p><strong>Invoice Number:</strong> @parsedInvoice.InvoiceNumber</p>
+                            <p><strong>Issued On:</strong> @parsedInvoice.IssuedOn?.ToLocalTime().ToString("d")</p>
+                            <p><strong>Due On:</strong> @parsedInvoice.DueOn?.ToLocalTime().ToString("d")</p>
+                            @if (parsedInvoice.TaxableSupplyDate.HasValue)
+                            {
+                                <p><strong>Taxable Supply Date:</strong> @parsedInvoice.TaxableSupplyDate.Value.ToLocalTime().ToString("d")</p>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Financial Summary</h6>
+                            <p><strong>Subtotal:</strong> @parsedInvoice.Subtotal?.ToString("N2") @parsedInvoice.Currency</p>
+                            <p><strong>Total:</strong> @parsedInvoice.Total?.ToString("N2") @parsedInvoice.Currency</p>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h6>Supplier</h6>
+                            <p class="mb-1">@parsedInvoice.SupplierName</p>
+                            <p class="mb-1 text-muted small">@parsedInvoice.SupplierStreet</p>
+                            <p class="mb-1 text-muted small">@parsedInvoice.SupplierZip @parsedInvoice.SupplierCity</p>
+                            @if (!string.IsNullOrEmpty(parsedInvoice.SupplierVatNo))
+                            {
+                                <p class="mb-0 text-muted small">VAT: @parsedInvoice.SupplierVatNo</p>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Customer</h6>
+                            <p class="mb-1">@parsedInvoice.CustomerName</p>
+                            <p class="mb-1 text-muted small">@parsedInvoice.CustomerStreet</p>
+                            <p class="mb-1 text-muted small">@parsedInvoice.CustomerZip @parsedInvoice.CustomerCity</p>
+                            @if (!string.IsNullOrEmpty(parsedInvoice.CustomerVatNo))
+                            {
+                                <p class="mb-0 text-muted small">VAT: @parsedInvoice.CustomerVatNo</p>
+                            }
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(parsedInvoice.LinesJson))
+                    {
+                        <div class="mt-3">
+                            <h6>Line Items</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Description</th>
+                                            <th class="text-end">Qty</th>
+                                            <th class="text-end">Unit Price</th>
+                                            <th class="text-end">VAT %</th>
+                                            <th class="text-end">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var line in GetLineItems())
+                                        {
+                                            <tr>
+                                                <td>@line.GetProperty("Name").GetString()</td>
+                                                <td class="text-end">@line.GetProperty("Quantity").GetDecimal().ToString("N2")</td>
+                                                <td class="text-end">@line.GetProperty("UnitPrice").GetDecimal().ToString("N2")</td>
+                                                <td class="text-end">@line.GetProperty("VatRate").GetDecimal().ToString("N0")%</td>
+                                                <td class="text-end">@line.GetProperty("TotalPriceWithVat").GetDecimal().ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+
+                    @if (parsedInvoice.OpenAiPromptTokens.HasValue)
+                    {
+                        <div class="mt-3">
+                            <p class="text-muted small mb-0">
+                                <strong>AI Usage:</strong>
+                                @parsedInvoice.OpenAiModel
+                                (@parsedInvoice.OpenAiPromptTokens input + @parsedInvoice.OpenAiCompletionTokens output tokens)
+                            </p>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="d-flex gap-2">
+            @if (!string.IsNullOrEmpty(parsedInvoice.BlobUrl))
+            {
+                <a href="@GetDownloadUrl()" class="btn btn-outline-primary" target="_blank">
+                    <i class="bi bi-download me-2"></i>
+                    Download Original File
+                </a>
+            }
+            @if (!string.IsNullOrEmpty(parsedInvoice.GeneratedIsdocBlobUrl))
+            {
+                <a href="@parsedInvoice.GeneratedIsdocBlobUrl" class="btn btn-outline-success" target="_blank">
+                    <i class="bi bi-file-earmark-code me-2"></i>
+                    Download Generated ISDOC XML
+                </a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid ParsedInvoiceId { get; set; }
+
+    private ParsedInvoice? parsedInvoice;
+    private ParsedInvoiceProcessing? latestProcessing;
+    private bool isRetrying = false;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+
+        // Auto-refresh every 3 seconds if processing
+        if (parsedInvoice?.Status == ParsedInvoiceStatus.Parsing)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadDataAsync();
+                    StateHasChanged();
+                });
+            }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        parsedInvoice = await ParsedInvoiceService.GetParsedInvoiceWithProcessingsAsync(ParsedInvoiceId);
+
+        if (parsedInvoice?.Processings != null && parsedInvoice.Processings.Any())
+        {
+            latestProcessing = parsedInvoice.Processings
+                .OrderByDescending(p => p.StartedAt)
+                .FirstOrDefault();
+        }
+
+        // Stop refresh if processing complete
+        if (parsedInvoice?.Status != ParsedInvoiceStatus.Parsing && refreshTimer != null)
+        {
+            await refreshTimer.DisposeAsync();
+            refreshTimer = null;
+        }
+    }
+
+    private RenderFragment RenderProcessingStep(string stepName, string displayName, string icon)
+    {
+        return builder =>
+        {
+            var isCurrentStep = latestProcessing?.CurrentStep == stepName;
+            var isPastStep = GetStepOrder(latestProcessing?.CurrentStep) > GetStepOrder(stepName);
+            var isFailed = latestProcessing?.Status == ProcessingStatus.Failed && isCurrentStep;
+
+            var cssClass = isPastStep ? "step-complete" : isCurrentStep ? "step-active" : "step-pending";
+            if (isFailed) cssClass = "step-failed";
+
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", $"processing-step {cssClass}");
+
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "step-icon");
+            builder.OpenElement(4, "i");
+            builder.AddAttribute(5, "class", $"bi {icon}");
+            builder.CloseElement(); // i
+            builder.CloseElement(); // step-icon
+
+            builder.OpenElement(6, "div");
+            builder.AddAttribute(7, "class", "step-content");
+            builder.AddContent(8, displayName);
+            builder.CloseElement(); // step-content
+
+            builder.CloseElement(); // div
+        };
+    }
+
+    private int GetStepOrder(string? step)
+    {
+        return step switch
+        {
+            "UploadingToOpenAI" => 1,
+            "ExtractingData" => 2,
+            "GeneratingISDOC" => 3,
+            "ValidatingXSD" => 4,
+            _ => 0
+        };
+    }
+
+    private MarkupString GetStatusBadge(ParsedInvoiceStatus status)
+    {
+        var (badgeClass, text) = status switch
+        {
+            ParsedInvoiceStatus.Uploaded => ("bg-secondary", "Uploaded"),
+            ParsedInvoiceStatus.Parsing => ("bg-primary", "Processing"),
+            ParsedInvoiceStatus.Parsed => ("bg-success", "Parsed"),
+            ParsedInvoiceStatus.ValidationFailed => ("bg-warning", "Validation Failed"),
+            ParsedInvoiceStatus.ReadyToImport => ("bg-info", "Ready to Import"),
+            ParsedInvoiceStatus.Imported => ("bg-dark", "Imported"),
+            _ => ("bg-secondary", "Unknown")
+        };
+
+        return new MarkupString($"<span class=\"badge {badgeClass}\">{text}</span>");
+    }
+
+    private JsonElement[] GetLineItems()
+    {
+        if (string.IsNullOrEmpty(parsedInvoice?.LinesJson))
+            return Array.Empty<JsonElement>();
+
+        try
+        {
+            var doc = JsonDocument.Parse(parsedInvoice.LinesJson);
+            return doc.RootElement.EnumerateArray().ToArray();
+        }
+        catch
+        {
+            return Array.Empty<JsonElement>();
+        }
+    }
+
+    private async Task RetryProcessing()
+    {
+        // TODO: Implement retry logic via PdfInvoiceProcessingService
+        isRetrying = true;
+        await Task.Delay(1000);
+        isRetrying = false;
+        await LoadDataAsync();
+    }
+
+    private string GetDownloadUrl()
+    {
+        return $"/api/parsed-invoices/{ParsedInvoiceId}/download";
+    }
+
+    private void NavigateToEdit()
+    {
+        NavigationManager.NavigateTo($"/edit-parsed-invoice/{ParsedInvoiceId}");
+    }
+
+    private void NavigateBack()
+    {
+        NavigationManager.NavigateTo("/my-invoices");
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}

@@ -142,6 +142,38 @@ public class ParsedInvoice
     // Notes
     public string? Note { get; set; }
 
+    // PDF Processing Fields
+    [MaxLength(20)]
+    public string? SourceFileType { get; set; } // "PDF" or "XML"
+
+    public InvoiceLineMode? LineMode { get; set; } // Only for PDF uploads
+
+    // Generated ISDOC Storage (for PDF sources)
+    [MaxLength(1024)]
+    public string? GeneratedIsdocBlobName { get; set; }
+
+    [MaxLength(2048)]
+    public string? GeneratedIsdocBlobUrl { get; set; }
+
+    // OpenAI Processing Metadata
+    [MaxLength(100)]
+    public string? OpenAiModel { get; set; }
+
+    public int? OpenAiPromptTokens { get; set; }
+
+    public int? OpenAiCompletionTokens { get; set; }
+
+    [Column(TypeName = "jsonb")]
+    public string? OpenAiRequestJson { get; set; }
+
+    [Column(TypeName = "jsonb")]
+    public string? OpenAiResponseJson { get; set; }
+
+    public DateTime? OpenAiProcessedAt { get; set; }
+
+    // Taxable Supply Date (Czech requirement - DUZP)
+    public DateTime? TaxableSupplyDate { get; set; }
+
     // Full parsed data as JSON (for reference/re-parsing)
     [Column(TypeName = "jsonb")]
     public string? ParsedDataJson { get; set; }

@@ -23,11 +23,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<ParsedInvoice> ParsedInvoices { get; set; }
     public DbSet<ParsedInvoiceProcessing> ParsedInvoiceProcessings { get; set; }
 
-    // Legacy - will be removed after migrations
-    public DbSet<InvoiceUpload> InvoiceUploads { get; set; }
-    public DbSet<ParsedIsdoc> ParsedIsdocs { get; set; }
-    public DbSet<InvoiceProcessing> InvoiceProcessings { get; set; }
-
     // Fakturoid Integration (Staging)
     public DbSet<FakturoidConnection> FakturoidConnections { get; set; }
     public DbSet<FakturoidOAuthState> FakturoidOAuthStates { get; set; }
@@ -62,67 +57,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.IsActive).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.UpdatedAt).IsRequired();
-        });
-
-        // InvoiceUpload configuration
-        modelBuilder.Entity<InvoiceUpload>(entity =>
-        {
-            entity.ToTable("invoice_uploads");
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => e.UploadedAt);
-            entity.Property(e => e.FileName).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.ContentType).HasMaxLength(100);
-            entity.Property(e => e.Status).IsRequired().HasConversion<int>();
-            entity.Property(e => e.BlobContainerName).IsRequired().HasMaxLength(255);
-            entity.Property(e => e.BlobName).IsRequired().HasMaxLength(1024);
-            entity.Property(e => e.BlobUrl).HasMaxLength(2048);
-            entity.HasOne(e => e.User)
-                .WithMany(u => u.InvoiceUploads)
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // ParsedIsdoc configuration
-        modelBuilder.Entity<ParsedIsdoc>(entity =>
-        {
-            entity.ToTable("parsed_isdocs");
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.InvoiceUploadId);
-            entity.HasIndex(e => e.ParsedAt);
-            entity.Property(e => e.ParsedData).IsRequired();
-            entity.Property(e => e.InvoiceNumber).HasMaxLength(100);
-            entity.Property(e => e.SupplierName).HasMaxLength(255);
-            entity.Property(e => e.CustomerName).HasMaxLength(255);
-            entity.Property(e => e.Currency).HasMaxLength(10);
-            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18,2)");
-            entity.HasOne(e => e.InvoiceUpload)
-                .WithMany(i => i.ParsedIsdocs)
-                .HasForeignKey(e => e.InvoiceUploadId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // InvoiceProcessing configuration
-        modelBuilder.Entity<InvoiceProcessing>(entity =>
-        {
-            entity.ToTable("invoice_processings");
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.InvoiceUploadId);
-            entity.HasIndex(e => e.ParsedIsdocId);
-            entity.HasIndex(e => e.StartedAt);
-            entity.HasIndex(e => e.Status);
-            entity.Property(e => e.Status).IsRequired().HasConversion<int>();
-            entity.Property(e => e.StartedAt).IsRequired();
-            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.Property(e => e.AttemptNumber).IsRequired();
-            entity.HasOne(e => e.InvoiceUpload)
-                .WithMany(i => i.Processings)
-                .HasForeignKey(e => e.InvoiceUploadId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(e => e.ParsedIsdoc)
-                .WithMany()
-                .HasForeignKey(e => e.ParsedIsdocId)
-                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // AuthenticationToken configuration
