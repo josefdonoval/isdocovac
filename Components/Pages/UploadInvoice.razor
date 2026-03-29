@@ -103,8 +103,8 @@
                         }
                         Upload Invoice
                     </button>
-                    <button type="button" class="btn btn-secondary" @onclick="NavigateToMyInvoices" disabled="@isUploading">
-                        View My Invoices
+                    <button type="button" class="btn btn-secondary" @onclick="NavigateToParsedInvoices" disabled="@isUploading">
+                        View Parsed Invoices
                     </button>
                 </div>
             </EditForm>
@@ -262,8 +262,8 @@
         return $"{len:0.##} {sizes[order]}";
     }
 
-    private void NavigateToMyInvoices()
+    private void NavigateToParsedInvoices()
     {
-        NavigationManager.NavigateTo("/my-invoices");
+        NavigationManager.NavigateTo("/isdoc/parsed");
     }
 }

@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="Isdocovac.csproj" />
+  <Project Path="Isdocovac.Tests/Isdocovac.Tests.csproj" />
 </Solution>

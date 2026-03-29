@@ -34,7 +34,7 @@
                 </div>
                 <h4 class="text-danger">Connection Failed</h4>
                 <p class="text-muted">@errorMessage</p>
-                <a href="/auth/fakturoid-import" class="btn btn-primary mt-3">Try Again</a>
+                <a href="/fakturoid/staging" class="btn btn-primary mt-3">Try Again</a>
             }
         </div>
     </div>
@@ -120,7 +120,7 @@
             await ConnectionProvider.CreateAsync(userId, accessToken, refreshToken, expiresAt, accountSlug);
 
             // Redirect to import page
-            NavigationManager.NavigateTo("/auth/fakturoid-import");
+            NavigationManager.NavigateTo("/fakturoid/staging");
         }
         catch (Exception ex)
         {

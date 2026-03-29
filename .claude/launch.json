@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Blazor App (HTTPS)",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run"],
+      "port": 7224
+    },
+    {
+      "name": "Blazor App (Watch)",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["watch"],
+      "port": 7224
+    }
+  ]
+}

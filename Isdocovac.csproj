@@ -8,6 +8,13 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Remove="Isdocovac.Tests\**" />
+        <Content Remove="Isdocovac.Tests\**" />
+        <EmbeddedResource Remove="Isdocovac.Tests\**" />
+        <None Remove="Isdocovac.Tests\**" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
