@@ -1,0 +1,181 @@
+@page "/vat/monthly"
+@using System.Security.Claims
+@using Isdocovac.Models.Vat
+@using Isdocovac.Providers
+@using Isdocovac.Services.Vat
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@attribute [Authorize]
+@inject IContactProvider ContactProvider
+@inject IMainInvoiceProvider InvoiceProvider
+@inject IVatCalculationService VatCalculationService
+@inject IDphXmlGeneratorService DphGenerator
+@inject IKhXmlGeneratorService KhGenerator
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Monthly VAT</PageTitle>
+
+<div class="container py-4" style="max-width: 900px;">
+    <h1>Monthly VAT (DPH + KH)</h1>
+    <p class="text-muted">Vygeneruje přiznání DPH (DPHDP3) a kontrolní hlášení (DPHKH1) pro vybraný měsíc.</p>
+
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <label class="form-label">Rok</label>
+            <InputNumber class="form-control" @bind-Value="year" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Měsíc</label>
+            <InputNumber class="form-control" @bind-Value="month" />
+        </div>
+        <div class="col-md-6 d-flex align-items-end gap-2">
+            <button type="button" class="btn btn-primary" @onclick="GenerateAsync" disabled="@busy">
+                @(busy ? "Generuji…" : "Generate")
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="PreviewAsync" disabled="@busy">
+                Preview
+            </button>
+        </div>
+    </div>
+
+    @if (errors.Count > 0)
+    {
+        <div class="alert alert-danger">
+            <strong>Chyby validace:</strong>
+            <ul class="mb-0">
+                @foreach (var err in errors)
+                {
+                    <li>@err</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(infoMessage))
+    {
+        <div class="alert alert-info">@infoMessage</div>
+    }
+
+    @if (report != null)
+    {
+        <h4 class="mt-4">Souhrn</h4>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <tbody>
+                    <tr><th>Obrat 21 % (ř. 1)</th><td>@Fmt(report.Obrat23) Kč</td><th>Daň 21 %</th><td>@Fmt(report.Dan23) Kč</td></tr>
+                    <tr><th>Obrat 12 % (ř. 2)</th><td>@Fmt(report.Obrat5) Kč</td><th>Daň 12 %</th><td>@Fmt(report.Dan5) Kč</td></tr>
+                    <tr><th>Služby z EU (ř. 5)</th><td>@Fmt(report.PSl23Eu) Kč</td><th>Daň</th><td>@Fmt(report.DanPSl23Eu) Kč</td></tr>
+                    <tr><th>Služby mimo EU (ř. 12)</th><td>@Fmt(report.PSl23NonEu) Kč</td><th>Daň</th><td>@Fmt(report.DanPSl23NonEu) Kč</td></tr>
+                    <tr><th>Tuzemské vstupy 21 % (ř. 40)</th><td>@Fmt(report.Pln23) Kč</td><th>Odpočet</th><td>@Fmt(report.OdpTuz23) Kč</td></tr>
+                    <tr><th>Reverse charge odpočet (ř. 43)</th><td>@Fmt(report.NarZdp23) Kč</td><th>Odpočet</th><td>@Fmt(report.OdZdp23) Kč</td></tr>
+                    <tr class="table-active"><th>Daň na výstupu celkem (ř. 62)</th><td>@Fmt(report.DanZocelk) Kč</td><th>Odpočet celkem (ř. 63)</th><td>@Fmt(report.OdpZocelk) Kč</td></tr>
+                    <tr class="table-warning"><th>Daň k úhradě (ř. 64)</th><td>@Fmt(report.DanoDa) Kč</td><th>Nadměrný odpočet (ř. 65)</th><td>@Fmt(report.DanoNo) Kč</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="small text-muted mt-3">
+            KH rows: A2 = @report.A2Rows.Count, A4 = @report.A4Rows.Count, B2 = @report.B2Rows.Count.
+            A5 agregát: @Fmt(report.A5Aggregate.Base23) Kč, B3 agregát: @Fmt(report.B3Aggregate.Base23) Kč.
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private int year = DateTime.Now.Year;
+    private int month = DateTime.Now.Month == 1 ? 12 : DateTime.Now.Month - 1;
+    private bool busy;
+    private string? infoMessage;
+    private List<string> errors = new();
+    private VatMonthlyReport? report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask!;
+        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !Guid.TryParse(claim.Value, out var uid))
+        {
+            NavigationManager.NavigateTo("/auth/login");
+            return;
+        }
+
+        var own = await ContactProvider.GetOwnCompanyAsync(uid);
+        if (own == null)
+        {
+            NavigationManager.NavigateTo("/vat/company?returnUrl=/vat/monthly");
+        }
+    }
+
+    private async Task<VatMonthlyReport?> BuildReportAsync()
+    {
+        errors.Clear();
+        infoMessage = null;
+
+        var authState = await AuthenticationStateTask!;
+        var userId = Guid.Parse(authState.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        var own = await ContactProvider.GetOwnCompanyAsync(userId);
+        if (own == null)
+        {
+            NavigationManager.NavigateTo("/vat/company?returnUrl=/vat/monthly");
+            return null;
+        }
+
+        var invoices = await InvoiceProvider.GetVatMonthInvoicesAsync(userId, year, month);
+        if (invoices.Count == 0)
+        {
+            infoMessage = $"Žádné faktury pro {month}/{year}.";
+            return null;
+        }
+
+        try
+        {
+            return await VatCalculationService.BuildAsync(invoices, own, year, month);
+        }
+        catch (VatExportValidationException ex)
+        {
+            errors.AddRange(ex.Errors);
+            return null;
+        }
+    }
+
+    private async Task PreviewAsync()
+    {
+        busy = true;
+        try
+        {
+            report = await BuildReportAsync();
+        }
+        finally { busy = false; }
+    }
+
+    private async Task GenerateAsync()
+    {
+        busy = true;
+        try
+        {
+            report = await BuildReportAsync();
+            if (report == null) return;
+
+            var dph = DphGenerator.Generate(report);
+            var kh = KhGenerator.Generate(report);
+
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
+                $"dph-{year}-{month}m.xml", dph, "application/xml");
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
+                $"kontrolni_hlaseni-{year}-{month}m.xml", kh, "application/xml");
+
+            infoMessage = "XML soubory staženy.";
+        }
+        finally { busy = false; }
+    }
+
+    private static string Fmt(decimal value) =>
+        value.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"));
+}

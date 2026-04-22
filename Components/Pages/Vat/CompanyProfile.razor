@@ -1,0 +1,263 @@
+@page "/vat/company"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject IContactProvider ContactProvider
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Company Profile (VAT)</PageTitle>
+
+<div class="container py-4" style="max-width: 800px;">
+    <h1>Company Profile</h1>
+    <p class="text-muted">Údaje plátce pro přiznání k DPH a kontrolní hlášení (VetaP).</p>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert @(statusSuccess ? "alert-success" : "alert-danger")">@statusMessage</div>
+    }
+
+    @if (model != null)
+    {
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Typ osoby</label>
+                    <select class="form-select" @bind="model.IsLegalEntity">
+                        <option value="false">Fyzická osoba (F)</option>
+                        <option value="true">Právnická osoba (P)</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">DIČ (bez CZ prefixu) *</label>
+                    <InputText class="form-control" @bind-Value="model.Dic" />
+                </div>
+            </div>
+
+            @if (model.IsLegalEntity)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Obchodní název *</label>
+                    <InputText class="form-control" @bind-Value="model.CompanyName" />
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Titul</label>
+                        <InputText class="form-control" @bind-Value="model.Titul" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Jméno *</label>
+                        <InputText class="form-control" @bind-Value="model.FirstName" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Příjmení *</label>
+                        <InputText class="form-control" @bind-Value="model.LastName" />
+                    </div>
+                </div>
+            }
+
+            <h5 class="mt-4">Adresa</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Ulice *</label>
+                    <InputText class="form-control" @bind-Value="model.Street" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Č. popisné *</label>
+                    <InputText class="form-control" @bind-Value="model.HouseNumber" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Č. orientační</label>
+                    <InputText class="form-control" @bind-Value="model.OrientNumber" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Obec *</label>
+                    <InputText class="form-control" @bind-Value="model.City" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">PSČ *</label>
+                    <InputText class="form-control" @bind-Value="model.Zip" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Stát (ISO2)</label>
+                    <InputText class="form-control" @bind-Value="model.CountryCode" />
+                </div>
+            </div>
+
+            <h5 class="mt-4">Kontakt</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">E-mail *</label>
+                    <InputText type="email" class="form-control" @bind-Value="model.Email" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Telefon</label>
+                    <InputText class="form-control" @bind-Value="model.Phone" />
+                </div>
+            </div>
+
+            <h5 class="mt-4">Finanční úřad + evidence</h5>
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">c_ufo *</label>
+                    <InputNumber class="form-control" @bind-Value="model.TaxOfficeCode" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">c_pracufo</label>
+                    <InputNumber class="form-control" @bind-Value="model.TaxOfficeBranchCode" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">CZ-NACE (c_okec)</label>
+                    <InputText class="form-control" @bind-Value="model.OkecCode" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">ID datové schránky</label>
+                    <InputText class="form-control" @bind-Value="model.DataBoxId" />
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary" disabled="@saving">
+                    @(saving ? "Ukládám…" : "Uložit")
+                </button>
+                @if (!string.IsNullOrEmpty(returnUrl))
+                {
+                    <a href="@returnUrl" class="btn btn-outline-secondary">Zpět</a>
+                }
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? returnUrl { get; set; }
+
+    private ContactFormModel? model;
+    private bool saving;
+    private string? statusMessage;
+    private bool statusSuccess;
+    private Guid userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask!;
+        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !Guid.TryParse(claim.Value, out userId))
+        {
+            NavigationManager.NavigateTo("/auth/login");
+            return;
+        }
+
+        var existing = await ContactProvider.GetOwnCompanyAsync(userId);
+        model = existing != null ? ContactFormModel.From(existing) : new ContactFormModel();
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        try
+        {
+            var contact = model!.ToEntity(userId);
+            await ContactProvider.UpsertOwnCompanyAsync(contact);
+            statusSuccess = true;
+            statusMessage = "Uloženo.";
+            if (!string.IsNullOrEmpty(returnUrl))
+            {
+                NavigationManager.NavigateTo(returnUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba: {ex.Message}";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    public class ContactFormModel
+    {
+        public bool IsLegalEntity { get; set; }
+        [Required] public string? Dic { get; set; }
+        public string? CompanyName { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Titul { get; set; }
+        [Required] public string? Street { get; set; }
+        [Required] public string? HouseNumber { get; set; }
+        public string? OrientNumber { get; set; }
+        [Required] public string? City { get; set; }
+        [Required] public string? Zip { get; set; }
+        public string CountryCode { get; set; } = "CZ";
+        [Required, EmailAddress] public string? Email { get; set; }
+        public string? Phone { get; set; }
+        [Required] public int? TaxOfficeCode { get; set; }
+        public int? TaxOfficeBranchCode { get; set; }
+        public string? OkecCode { get; set; }
+        public string? DataBoxId { get; set; }
+
+        public static ContactFormModel From(Contact c) => new()
+        {
+            IsLegalEntity = c.IsLegalEntity,
+            Dic = c.Dic,
+            CompanyName = c.CompanyName,
+            FirstName = c.FirstName,
+            LastName = c.LastName,
+            Titul = c.Titul,
+            Street = c.Street,
+            HouseNumber = c.HouseNumber,
+            OrientNumber = c.OrientNumber,
+            City = c.City,
+            Zip = c.Zip,
+            CountryCode = c.CountryCode,
+            Email = c.Email,
+            Phone = c.Phone,
+            TaxOfficeCode = c.TaxOfficeCode,
+            TaxOfficeBranchCode = c.TaxOfficeBranchCode,
+            OkecCode = c.OkecCode,
+            DataBoxId = c.DataBoxId,
+        };
+
+        public Contact ToEntity(Guid userId) => new()
+        {
+            UserId = userId,
+            Kind = ContactKind.OwnCompany,
+            IsLegalEntity = IsLegalEntity,
+            Dic = Dic,
+            CompanyName = CompanyName,
+            FirstName = FirstName,
+            LastName = LastName,
+            Titul = Titul,
+            Street = Street,
+            HouseNumber = HouseNumber,
+            OrientNumber = OrientNumber,
+            City = City,
+            Zip = Zip,
+            CountryCode = string.IsNullOrWhiteSpace(CountryCode) ? "CZ" : CountryCode.ToUpperInvariant(),
+            Email = Email,
+            Phone = Phone,
+            TaxOfficeCode = TaxOfficeCode,
+            TaxOfficeBranchCode = TaxOfficeBranchCode,
+            OkecCode = OkecCode,
+            DataBoxId = DataBoxId,
+            IsActive = true,
+        };
+    }
+}

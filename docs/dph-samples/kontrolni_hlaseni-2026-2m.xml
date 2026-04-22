@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Pisemnost nazevSW="Exportováno službou fakturoid.cz">
+  <DPHKH1 verzePis="03.01.08">
+    <VetaD dokument="KH1" k_uladis="DPH" khdph_forma="B" d_poddp="19.03.2026" rok="2026" mesic="2"/>
+    <VetaP c_orient="" c_pop="52" c_pracufo="2104" c_ufo="452" dic="8605256220" c_telef="775725057" email="josef.donoval@hotmail.com" id_dats="w8t26xg" naz_obce="Stašov" psc="26751" stat="Česká republika" ulice="Stašov" jmeno="Josef" prijmeni="Donoval" titul="" typ_ds="F"/>
+    <VetaA2 c_evid_dd="FIA1IIHO-0002" dan1="91.55" dan2="0.0" dppd="09.02.2026" k_stat="" vatid_dod="" zakl_dane1="435.96" zakl_dane2="0.0"/>
+    <VetaA2 c_evid_dd="081000710149" dan1="37.07" dan2="0.0" dppd="11.02.2026" k_stat="DE" vatid_dod="812871812" zakl_dane1="176.5" zakl_dane2="0.0"/>
+    <VetaA2 c_evid_dd="ROYALAPPS260220-2289-71156" dan1="263.25" dan2="0.0" dppd="20.02.2026" k_stat="" vatid_dod="" zakl_dane1="1253.59" zakl_dane2="0.0"/>
+    <VetaA4 c_evid_dd="2026020001" dan1="4573.13" dan2="0.0" dic_odb="" dppd="02.02.2026" kod_rezim_pl="0" zakl_dane1="21776.87" zakl_dane2="0.0" zdph_44="N"/>
+    <VetaA4 c_evid_dd="2026020002" dan1="15435.0" dan2="0.0" dic_odb="06990258" dppd="28.02.2026" kod_rezim_pl="0" zakl_dane1="73500.0" zakl_dane2="0.0" zdph_44="N"/>
+    <VetaA5 dan1="0.0" dan2="0.0" dan3="0.0" zakl_dane1="0.0" zakl_dane2="0.0" zakl_dane3="0.0"/>
+    <VetaB3 dan1="1398.62" dan2="0.0" dan3="0.0" zakl_dane1="6660.11" zakl_dane2="0.0" zakl_dane3="0.0"/>
+    <VetaC celk_zd_a2="1866.05" obrat23="95276.87" obrat5="0.0" pln23="6660.11" pln5="0.0" pln_rez_pren="0" rez_pren23="0" rez_pren5="0"/>
+  </DPHKH1>
+</Pisemnost>

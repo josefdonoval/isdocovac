@@ -5,7 +5,10 @@ using Isdocovac.Services;
 using Isdocovac.Services.Authentication;
 using Isdocovac.Services.Email;
 using Isdocovac.Services.Fakturoid;
+using Isdocovac.Services.Fx;
 using Isdocovac.Services.ISDOC;
+using Isdocovac.Services.Vat;
+using Isdocovac.Providers.Fx;
 using Isdocovac.Services.Claude;
 using Isdocovac.Services.OpenAI;
 using Isdocovac.Services.Security;
@@ -101,6 +104,15 @@ builder.Services.AddScoped<IPdfInvoiceProcessingService, PdfInvoiceProcessingSer
 builder.Services.AddScoped<IInvoiceImportService, InvoiceImportService>();
 builder.Services.AddScoped<IInvoiceManagementService, InvoiceManagementService>();
 builder.Services.AddScoped<IParsedInvoiceService, ParsedInvoiceService>();
+
+// Contacts + VAT reporting
+builder.Services.AddScoped<IContactProvider, ContactProvider>();
+builder.Services.AddScoped<IFxRateProvider, FxRateProvider>();
+builder.Services.AddHttpClient("Cnb");
+builder.Services.AddScoped<ICnbExchangeRateService, CnbExchangeRateService>();
+builder.Services.AddScoped<IVatCalculationService, VatCalculationService>();
+builder.Services.AddScoped<IDphXmlGeneratorService, DphXmlGeneratorService>();
+builder.Services.AddScoped<IKhXmlGeneratorService, KhXmlGeneratorService>();
 
 var app = builder.Build();
 

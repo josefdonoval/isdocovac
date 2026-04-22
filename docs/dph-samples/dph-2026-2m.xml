@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Pisemnost nazevSW="Exportováno službou fakturoid.cz">
+  <DPHDP3 verzePis="01.02.16">
+    <VetaD dokument="DP3" k_uladis="DPH" dapdph_forma="B" typ_platce="P" trans="A" c_okec="620200" d_poddp="19.03.2026" rok="2026" mesic="2"/>
+    <VetaP c_pracufo="2104" c_ufo="452" dic="8605256220" email="josef.donoval@hotmail.com" c_telef="775725057" ulice="Stašov" naz_obce="Stašov" psc="26751" stat="ČESKÁ REPUBLIKA" c_pop="52" c_orient="" jmeno="Josef" prijmeni="Donoval" titul="" typ_ds="F"/>
+    <Veta1 obrat23="95277.0" dan23="20008.0" obrat5="0.0" dan5="0.0" p_sl23_e="177.0" dan_psl23_e="37.0" p_sl5_e="0.0" dan_psl5_e="0.0" p_sl23_z="1690.0" dan_psl23_z="355.0" p_sl5_z="0.0" dan_psl5_z="0.0" rez_pren23="0.0" dan_rpren23="0.0" rez_pren5="0.0" dan_rpren5="0.0"/>
+    <Veta2 dod_zb="0.0" pln_sluzby="0.0" pln_rez_pren="0.0" pln_zaslani="0.0" pln_ost="0.0"/>
+    <Veta4 pln23="6660.0" odp_tuz23_nar="1399.0" pln5="0.0" odp_tuz5_nar="0.0" nar_zdp23="1867.0" od_zdp23="392.0" nar_zdp5="0.0" od_zdp5="0.0" odp_sum_kr="0" odp_sum_nar="1791.0"/>
+    <Veta6 dano="0" dano_no="0" dano_da="18609.0" dan_zocelk="20400.0" odp_zocelk="1791.0"/>
+  </DPHDP3>
+</Pisemnost>

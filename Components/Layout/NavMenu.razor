@@ -1,60 +1,60 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Isdocovac</a>
-    </div>
+@using Microsoft.AspNetCore.Components.Routing
+
+<div class="brand">
+    <a class="brand-link" href="/">
+        <span class="brand-mark">I</span>
+        <span class="brand-name">Isdocovac</span>
+    </a>
 </div>
 
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
+    <nav class="nav-list">
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>
+            <span>Home</span>
+        </NavLink>
 
-        <div class="nav-item px-3">
-            <div class="nav-link text-white-50 ps-2">
-                <strong>Invoices</strong>
-            </div>
-        </div>
+        <div class="nav-section">Invoices</div>
 
-        <div class="nav-item px-3 ps-4">
-            <NavLink class="nav-link" href="invoices">
-                <span class="bi bi-file-text-nav-menu" aria-hidden="true"></span> All Invoices
-            </NavLink>
-        </div>
+        <NavLink class="nav-link" href="invoices" Match="NavLinkMatch.All">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+            <span>All Invoices</span>
+        </NavLink>
 
-        <div class="nav-item px-3 ps-4">
-            <NavLink class="nav-link" href="invoices/create">
-                <span class="bi bi-plus-circle-nav-menu" aria-hidden="true"></span> Create Invoice
-            </NavLink>
-        </div>
+        <NavLink class="nav-link" href="invoices/create">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+            <span>Create Invoice</span>
+        </NavLink>
 
-        <div class="nav-item px-3">
-            <div class="nav-link text-white-50 ps-2">
-                <strong>Import Sources</strong>
-            </div>
-        </div>
+        <div class="nav-section">Import Sources</div>
 
-        <div class="nav-item px-3 ps-4">
-            <NavLink class="nav-link" href="upload-invoice">
-                <span class="bi bi-upload-nav-menu" aria-hidden="true"></span> Upload invoice
-            </NavLink>
-        </div>
+        <NavLink class="nav-link" href="upload-invoice">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            <span>Upload invoice</span>
+        </NavLink>
 
-        <div class="nav-item px-3 ps-4">
-            <NavLink class="nav-link" href="isdoc/parsed">
-                <span class="bi bi-file-earmark-text-nav-menu" aria-hidden="true"></span> Parsed ISDOC
-            </NavLink>
-        </div>
+        <NavLink class="nav-link" href="isdoc/parsed">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+            <span>Parsed ISDOC</span>
+        </NavLink>
 
-        <div class="nav-item px-3 ps-4">
-            <NavLink class="nav-link" href="fakturoid/staging">
-                <span class="bi bi-cloud-download-nav-menu" aria-hidden="true"></span> Fakturoid Staging
-            </NavLink>
-        </div>
+        <NavLink class="nav-link" href="fakturoid/staging">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"/><path d="M12 12v9m-4-4 4 4 4-4"/></svg>
+            <span>Fakturoid Staging</span>
+        </NavLink>
 
+        <div class="nav-section">Reporting</div>
+
+        <NavLink class="nav-link" href="vat/monthly">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg>
+            <span>Monthly VAT</span>
+        </NavLink>
+
+        <NavLink class="nav-link" href="vat/company">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 8v8M8 12h8"/></svg>
+            <span>Company Profile</span>
+        </NavLink>
     </nav>
 </div>

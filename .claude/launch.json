@@ -12,6 +12,12 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["watch"],
       "port": 7224
+    },
+    {
+      "name": "Blazor App (Preview)",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--no-build", "--urls", "http://localhost:5280"],
+      "port": 5280
     }
   ]
 }

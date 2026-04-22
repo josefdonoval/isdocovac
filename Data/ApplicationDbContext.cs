@@ -36,6 +36,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<UserSession> UserSessions { get; set; }
     public DbSet<LoginAttempt> LoginAttempts { get; set; }
 
+    // Contacts + VAT reporting
+    public DbSet<Contact> Contacts { get; set; }
+    public DbSet<FxRate> FxRates { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -152,6 +156,28 @@ public class ApplicationDbContext : DbContext
         // Soft delete filters
         modelBuilder.Entity<Invoice>().HasQueryFilter(i => !i.IsDeleted);
         modelBuilder.Entity<ParsedInvoice>().HasQueryFilter(p => !p.IsDeleted);
+
+        // Contact configuration
+        modelBuilder.Entity<Contact>(entity =>
+        {
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.Kind });
+            // Partial unique index: at most one OwnCompany contact per user
+            entity.HasIndex(e => e.UserId)
+                .IsUnique()
+                .HasFilter("\"Kind\" = 0")
+                .HasDatabaseName("ix_contacts_owncompany_unique");
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FxRate configuration
+        modelBuilder.Entity<FxRate>(entity =>
+        {
+            entity.HasIndex(e => new { e.Date, e.Currency }).IsUnique();
+        });
 
         // FakturoidInvoice configuration
         modelBuilder.Entity<FakturoidInvoice>(entity =>
