@@ -1,0 +1,557 @@
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Models.Forms
+@using Isdocovac.Providers
+@using Isdocovac.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject IInvoiceManagementService InvoiceManagementService
+@inject IContactProvider ContactProvider
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="container mt-4">
+    <h1>@Title</h1>
+    <p class="text-muted">@Subtitle</p>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    @if (_ownCompany == null && _initialized)
+    {
+        <div class="alert alert-warning">
+            Nejprve je třeba vyplnit profil vlastní společnosti.
+            <a href="/vat/company" class="alert-link">Přejít na profil</a>.
+        </div>
+    }
+    else if (!_initialized)
+    {
+        <div class="text-muted">Načítání…</div>
+    }
+    else
+    {
+        <EditForm Model="@formModel" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            <!-- Counterparty (Contact picker) -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">@CounterpartyCardTitle <span class="text-danger">*</span></h5>
+                </div>
+                <div class="card-body">
+                    <ContactPicker UserId="_userId"
+                                   Kind="CounterpartyKind"
+                                   SelectedContactId="_selectedContactId"
+                                   OnContactSelected="OnContactSelected"
+                                   Disabled="isSubmitting" />
+
+                    @if (_selectedContact != null)
+                    {
+                        <div class="mt-3 small text-muted">
+                            <div><strong>@(string.IsNullOrWhiteSpace(_selectedContact.CompanyName) ? ($"{_selectedContact.FirstName} {_selectedContact.LastName}").Trim() : _selectedContact.CompanyName)</strong></div>
+                            <div>@FormatAddress(_selectedContact)</div>
+                            @if (!string.IsNullOrWhiteSpace(_selectedContact.Ico))
+                            {
+                                <div>IČO: @_selectedContact.Ico</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_selectedContact.Dic))
+                            {
+                                <div>DIČ: @_selectedContact.Dic</div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Our side (OwnCompany, read-only) -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">@OwnSideCardTitle</h5>
+                </div>
+                <div class="card-body small text-muted">
+                    <div><strong>@(_ownCompany!.CompanyName ?? $"{_ownCompany.FirstName} {_ownCompany.LastName}".Trim())</strong></div>
+                    <div>@FormatAddress(_ownCompany)</div>
+                    @if (!string.IsNullOrWhiteSpace(_ownCompany.Ico))
+                    {
+                        <div>IČO: @_ownCompany.Ico</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_ownCompany.Dic))
+                    {
+                        <div>DIČ: @_ownCompany.Dic</div>
+                    }
+                </div>
+            </div>
+
+            <!-- Essential Fields Card -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Základní údaje</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="documentType" class="form-label">Typ dokladu <span class="text-danger">*</span></label>
+                            <InputSelect id="documentType" class="form-select" @bind-Value="formModel.DocumentType">
+                                <option value="invoice">Faktura</option>
+                                <option value="proforma">Proforma</option>
+                                <option value="correction">Oprava</option>
+                            </InputSelect>
+                            <ValidationMessage For="@(() => formModel.DocumentType)" />
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="currency" class="form-label">Měna <span class="text-danger">*</span></label>
+                            <InputSelect id="currency" class="form-select" @bind-Value="formModel.Currency">
+                                <option value="CZK">CZK</option>
+                                <option value="EUR">EUR</option>
+                                <option value="USD">USD</option>
+                                <option value="GBP">GBP</option>
+                            </InputSelect>
+                            <ValidationMessage For="@(() => formModel.Currency)" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="number" class="form-label">Číslo @NumberLabel <span class="text-danger">*</span></label>
+                            <InputText id="number" class="form-control" @bind-Value="formModel.Number" @bind-Value:after="OnInvoiceNumberChanged" />
+                            <ValidationMessage For="@(() => formModel.Number)" />
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="issuedOn" class="form-label">Datum vystavení <span class="text-danger">*</span></label>
+                            <InputDate id="issuedOn" class="form-control" @bind-Value="formModel.IssuedOn" @bind-Value:after="OnIssueDateChanged" />
+                            <ValidationMessage For="@(() => formModel.IssuedOn)" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="taxableSupplyDate" class="form-label">DUZP <span class="text-danger">*</span></label>
+                            <InputDate id="taxableSupplyDate" class="form-control" @bind-Value="formModel.TaxableSupplyDate" @bind-Value:after="OnVatDateChanged" />
+                            <ValidationMessage For="@(() => formModel.TaxableSupplyDate)" />
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="dueOn" class="form-label">Splatnost</label>
+                            <InputDate id="dueOn" class="form-control" @bind-Value="formModel.DueOn" @bind-Value:after="OnDueDateChanged" />
+                            <div class="form-text">Automaticky: 30 dní od vystavení</div>
+                            <ValidationMessage For="@(() => formModel.DueOn)" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="pdfFile" class="form-label">Příloha PDF (volitelné)</label>
+                        <InputFile id="pdfFile" class="form-control" OnChange="HandleFileSelected" accept=".pdf" disabled="@isSubmitting" />
+                        <div class="form-text">Max. 10 MB.</div>
+                        @if (formModel.PdfFile != null)
+                        {
+                            <div class="alert alert-info mt-2 mb-0">
+                                <strong>Soubor:</strong> @formModel.PdfFile.Name (@FormatFileSize(formModel.PdfFile.Size))
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Line Items Card -->
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Položky <span class="text-danger">*</span></h5>
+                    <button type="button" class="btn btn-sm btn-success" @onclick="AddLineItem" disabled="@isSubmitting">
+                        + Přidat položku
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (formModel.Lines.Count == 0)
+                    {
+                        <div class="alert alert-warning">Zatím žádné položky.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%">#</th>
+                                        <th style="width: 30%">Popis</th>
+                                        <th style="width: 12%">Množství</th>
+                                        <th style="width: 15%">Jedn. cena</th>
+                                        <th style="width: 12%">DPH %</th>
+                                        <th style="width: 15%">Celkem</th>
+                                        <th style="width: 11%"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < formModel.Lines.Count; i++)
+                                    {
+                                        var index = i;
+                                        var line = formModel.Lines[index];
+                                        <tr>
+                                            <td>@(index + 1)</td>
+                                            <td><input type="text" class="form-control form-control-sm" @bind="line.Name" @bind:event="oninput" @onchange="() => RecalculateLine(index)" /></td>
+                                            <td><input type="number" step="0.01" class="form-control form-control-sm" @bind="line.Quantity" @bind:event="oninput" @onchange="() => RecalculateLine(index)" /></td>
+                                            <td><input type="number" step="0.01" class="form-control form-control-sm" @bind="line.UnitPrice" @bind:event="oninput" @onchange="() => RecalculateLine(index)" /></td>
+                                            <td><input type="number" step="1" class="form-control form-control-sm" @bind="line.VatRate" @bind:event="oninput" @onchange="() => RecalculateLine(index)" /></td>
+                                            <td class="text-end">@line.TotalPriceWithVat.ToString("N2")</td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveLineItem(index)" disabled="@isSubmitting">×</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-md-6 offset-md-6">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td class="text-end"><strong>Základ:</strong></td>
+                                        <td class="text-end">@formModel.Subtotal.ToString("N2") @formModel.Currency</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-end"><strong>DPH:</strong></td>
+                                        <td class="text-end">@((formModel.Total - formModel.Subtotal).ToString("N2")) @formModel.Currency</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-end"><strong>Celkem s DPH:</strong></td>
+                                        <td class="text-end"><strong>@formModel.Total.ToString("N2") @formModel.Currency</strong></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Advanced Fields Card -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <button class="btn btn-link p-0 text-decoration-none w-100 text-start" type="button" @onclick="ToggleAdvancedFields">
+                            @(showAdvancedFields ? "▾" : "▸") Platební údaje a poznámky (volitelné)
+                        </button>
+                    </h5>
+                </div>
+                @if (showAdvancedFields)
+                {
+                    <div class="card-body">
+                        <h6 class="border-bottom pb-2 mb-3">Platba</h6>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="variableSymbol" class="form-label">Variabilní symbol</label>
+                                <InputText id="variableSymbol" class="form-control" @bind-Value="formModel.VariableSymbol" @bind-Value:after="OnVariableSymbolChanged" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="constantSymbol" class="form-label">Konstantní symbol</label>
+                                <InputText id="constantSymbol" class="form-control" @bind-Value="formModel.ConstantSymbol" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="specificSymbol" class="form-label">Specifický symbol</label>
+                                <InputText id="specificSymbol" class="form-control" @bind-Value="formModel.SpecificSymbol" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="iban" class="form-label">IBAN</label>
+                                <InputText id="iban" class="form-control" @bind-Value="formModel.Iban" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="bankAccount" class="form-label">Bankovní účet</label>
+                                <InputText id="bankAccount" class="form-control" @bind-Value="formModel.BankAccount" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="swiftBic" class="form-label">SWIFT/BIC</label>
+                                <InputText id="swiftBic" class="form-control" @bind-Value="formModel.SwiftBic" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Poznámky</h6>
+                        <div class="mb-3">
+                            <label for="note" class="form-label">Poznámka (na dokladu)</label>
+                            <InputTextArea id="note" class="form-control" rows="3" @bind-Value="formModel.Note" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="footerNote" class="form-label">Patička</label>
+                            <InputTextArea id="footerNote" class="form-control" rows="2" @bind-Value="formModel.FooterNote" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="privateNote" class="form-label">Interní poznámka</label>
+                            <InputTextArea id="privateNote" class="form-control" rows="2" @bind-Value="formModel.PrivateNote" />
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="d-flex gap-2 mb-4">
+                <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        <span>Ukládám…</span>
+                    }
+                    else
+                    {
+                        <span>@SubmitLabel</span>
+                    }
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel" disabled="@isSubmitting">Zrušit</button>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public InvoiceDirection Direction { get; set; }
+
+    private InvoiceFormModel formModel = new();
+    private Contact? _ownCompany;
+    private Contact? _selectedContact;
+    private Guid? _selectedContactId;
+    private Guid _userId;
+    private bool _initialized;
+
+    private string? errorMessage;
+    private bool isSubmitting;
+    private bool showAdvancedFields;
+    private bool isDueDateManuallySet;
+    private bool isInvoiceNumberManuallySet;
+    private bool isVariableSymbolManuallySet;
+
+    private bool IsOutbound => Direction == InvoiceDirection.Outbound;
+    private ContactKind CounterpartyKind => IsOutbound ? ContactKind.Client : ContactKind.Supplier;
+
+    private string Title => IsOutbound ? "Vystavit fakturu" : "Vytvořit náklad";
+    private string Subtitle => IsOutbound
+        ? "Nová odchozí faktura pro odběratele."
+        : "Nový náklad přijatý od dodavatele.";
+    private string CounterpartyCardTitle => IsOutbound ? "Odběratel" : "Dodavatel";
+    private string OwnSideCardTitle => IsOutbound ? "Dodavatel (Vy)" : "Odběratel (Vy)";
+    private string NumberLabel => IsOutbound ? "faktury" : "dokladu";
+    private string SubmitLabel => IsOutbound ? "Vystavit fakturu" : "Vytvořit náklad";
+
+    protected override async Task OnInitializedAsync()
+    {
+        formModel.Direction = Direction;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userIdString = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out _userId))
+        {
+            errorMessage = "Neplatná relace. Přihlaste se znovu.";
+            _initialized = true;
+            return;
+        }
+
+        _ownCompany = await ContactProvider.GetOwnCompanyAsync(_userId);
+        if (_ownCompany != null)
+        {
+            ApplyOwnCompanyToForm();
+        }
+
+        AddLineItem();
+        UpdateDueDateFromIssueDate();
+        await GenerateInvoiceNumber();
+
+        _initialized = true;
+    }
+
+    private void ApplyOwnCompanyToForm()
+    {
+        if (_ownCompany == null) return;
+
+        var name = _ownCompany.CompanyName ?? $"{_ownCompany.FirstName} {_ownCompany.LastName}".Trim();
+        var street = ComposeStreet(_ownCompany);
+
+        if (IsOutbound)
+        {
+            formModel.SupplierName = name;
+            formModel.SupplierStreet = street;
+            formModel.SupplierCity = _ownCompany.City;
+            formModel.SupplierZip = _ownCompany.Zip;
+            formModel.SupplierCountry = _ownCompany.CountryCode;
+            formModel.SupplierRegistrationNo = _ownCompany.Ico;
+            formModel.SupplierVatNo = _ownCompany.Dic;
+        }
+        else
+        {
+            formModel.ClientName = name;
+            formModel.ClientStreet = street;
+            formModel.ClientCity = _ownCompany.City;
+            formModel.ClientZip = _ownCompany.Zip;
+            formModel.ClientCountry = _ownCompany.CountryCode;
+            formModel.ClientRegistrationNo = _ownCompany.Ico;
+            formModel.ClientVatNo = _ownCompany.Dic;
+        }
+    }
+
+    private void OnContactSelected(Contact? contact)
+    {
+        _selectedContact = contact;
+        _selectedContactId = contact?.Id;
+
+        var name = contact == null
+            ? string.Empty
+            : (contact.CompanyName ?? $"{contact.FirstName} {contact.LastName}".Trim());
+        var street = contact == null ? null : ComposeStreet(contact);
+
+        if (IsOutbound)
+        {
+            formModel.ClientName = name;
+            formModel.ClientStreet = street;
+            formModel.ClientCity = contact?.City;
+            formModel.ClientZip = contact?.Zip;
+            formModel.ClientCountry = contact?.CountryCode;
+            formModel.ClientRegistrationNo = contact?.Ico;
+            formModel.ClientVatNo = contact?.Dic;
+        }
+        else
+        {
+            formModel.SupplierName = name;
+            formModel.SupplierStreet = street;
+            formModel.SupplierCity = contact?.City;
+            formModel.SupplierZip = contact?.Zip;
+            formModel.SupplierCountry = contact?.CountryCode;
+            formModel.SupplierRegistrationNo = contact?.Ico;
+            formModel.SupplierVatNo = contact?.Dic;
+        }
+    }
+
+    private static string? ComposeStreet(Contact c)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(c.Street)) parts.Add(c.Street!);
+        var number = string.Join("/", new[] { c.HouseNumber, c.OrientNumber }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (!string.IsNullOrWhiteSpace(number)) parts.Add(number);
+        return parts.Count == 0 ? null : string.Join(" ", parts);
+    }
+
+    private static string FormatAddress(Contact c)
+    {
+        var street = ComposeStreet(c);
+        var tail = string.Join(" ", new[] { c.Zip, c.City }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return string.Join(", ", new[] { street, tail }.Where(s => !string.IsNullOrWhiteSpace(s))!);
+    }
+
+    private void OnIssueDateChanged()
+    {
+        if (!isDueDateManuallySet) UpdateDueDateFromIssueDate();
+    }
+
+    private void OnDueDateChanged() => isDueDateManuallySet = true;
+
+    private async Task OnVatDateChanged()
+    {
+        if (!isInvoiceNumberManuallySet) await GenerateInvoiceNumber();
+    }
+
+    private void OnInvoiceNumberChanged()
+    {
+        isInvoiceNumberManuallySet = true;
+        if (!isVariableSymbolManuallySet) UpdateVariableSymbolFromInvoiceNumber();
+    }
+
+    private void OnVariableSymbolChanged() => isVariableSymbolManuallySet = true;
+
+    private void UpdateDueDateFromIssueDate() => formModel.DueOn = formModel.IssuedOn.AddDays(30);
+
+    private async Task GenerateInvoiceNumber()
+    {
+        try
+        {
+            if (_userId != Guid.Empty)
+            {
+                formModel.Number = await InvoiceManagementService.GenerateInvoiceNumberAsync(_userId, formModel.TaxableSupplyDate);
+                if (!isVariableSymbolManuallySet) UpdateVariableSymbolFromInvoiceNumber();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Nelze vygenerovat číslo dokladu: {ex.Message}";
+        }
+    }
+
+    private void UpdateVariableSymbolFromInvoiceNumber() => formModel.VariableSymbol = formModel.Number;
+
+    private void AddLineItem() => formModel.Lines.Add(new InvoiceLineFormModel());
+
+    private void RemoveLineItem(int index)
+    {
+        if (formModel.Lines.Count > 0)
+        {
+            formModel.Lines.RemoveAt(index);
+            formModel.RecalculateTotals();
+        }
+    }
+
+    private void RecalculateLine(int _)
+    {
+        formModel.RecalculateTotals();
+        StateHasChanged();
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        formModel.PdfFile = e.File;
+        errorMessage = null;
+    }
+
+    private void ToggleAdvancedFields() => showAdvancedFields = !showAdvancedFields;
+
+    private async Task HandleSubmit()
+    {
+        errorMessage = null;
+
+        if (_selectedContact == null)
+        {
+            errorMessage = IsOutbound ? "Vyberte odběratele." : "Vyberte dodavatele.";
+            return;
+        }
+
+        if (!formModel.Validate(out var errors))
+        {
+            errorMessage = string.Join("; ", errors);
+            return;
+        }
+
+        try
+        {
+            isSubmitting = true;
+            formModel.Direction = Direction;
+
+            var invoice = formModel.ToEntity(_userId);
+            var created = await InvoiceManagementService.CreateManualInvoiceWithAttachmentAsync(invoice, formModel.PdfFile);
+            NavigationManager.NavigateTo($"/invoices/{created.Id}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Chyba při ukládání: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void Cancel() => NavigationManager.NavigateTo("/invoices");
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}

@@ -1,0 +1,203 @@
+c_pracufo;c_ufo;k_ufo_vema;nazev;kraj
+2001;451;2000;Praha 1;Hlavní město Praha
+2002;451;2000;Praha 2;Hlavní město Praha
+2003;451;2000;Praha 3;Hlavní město Praha
+2004;451;2000;Praha 4;Hlavní město Praha
+2005;451;2000;Praha 5;Hlavní město Praha
+2006;451;2000;Praha 6;Hlavní město Praha
+2007;451;2000;Praha 7;Hlavní město Praha
+2008;451;2000;Praha 8;Hlavní město Praha
+2009;451;2000;Praha 9;Hlavní město Praha
+2010;451;2000;Praha 10;Hlavní město Praha
+2011;451;2000;Praha - Jižní Město;Hlavní město Praha
+2012;451;2000;Praha - Modřany;Hlavní město Praha
+2101;452;2100;Praha-východ;Středočeský
+2102;452;2100;Praha-západ;Středočeský
+2103;452;2100;Benešov;Středočeský
+2104;452;2100;Beroun;Středočeský
+2105;452;2100;Brandýs nad Labem-Stará Boleslav;Středočeský
+2106;452;2100;Čáslav;Středočeský
+2107;452;2100;Český Brod;Středočeský
+2108;452;2100;Dobříš;Středočeský
+2109;452;2100;Hořovice;Středočeský
+2110;452;2100;Kladno;Středočeský
+2111;452;2100;Kolín;Středočeský
+2112;452;2100;Kralupy nad Vltavou;Středočeský
+2113;452;2100;Kutná Hora;Středočeský
+2114;452;2100;Mělník;Středočeský
+2115;452;2100;Mladá Boleslav;Středočeský
+2116;452;2100;Mnichovo Hradiště;Středočeský
+2117;452;2100;Neratovice;Středočeský
+2118;452;2100;Nymburk;Středočeský
+2119;452;2100;Poděbrady;Středočeský
+2120;452;2100;Příbram;Středočeský
+2121;452;2100;Rakovník;Středočeský
+2122;452;2100;Říčany;Středočeský
+2123;452;2100;Sedlčany;Středočeský
+2124;452;2100;Slaný;Středočeský
+2125;452;2100;Vlašim;Středočeský
+2126;452;2100;Votice;Středočeský
+2201;453;2200;České Budějovice;Jihočeský
+2202;453;2200;Blatná;Jihočeský
+2203;453;2200;Český Krumlov;Jihočeský
+2204;453;2200;Dačice;Jihočeský
+2205;453;2200;Jindřichův Hradec;Jihočeský
+2206;453;2200;Kaplice;Jihočeský
+2207;453;2200;Milevsko;Jihočeský
+2208;453;2200;Písek;Jihočeský
+2209;453;2200;Prachatice;Jihočeský
+2210;453;2200;Soběslav;Jihočeský
+2211;453;2200;Strakonice;Jihočeský
+2212;453;2200;Tábor;Jihočeský
+2213;453;2200;Trhové Sviny;Jihočeský
+2214;453;2200;Třeboň;Jihočeský
+2215;453;2200;Týn nad Vltavou;Jihočeský
+2216;453;2200;Vimperk;Jihočeský
+2217;453;2200;Vodňany;Jihočeský
+2301;454;2300;Plzeň;Plzeňský
+2302;454;2300;Plzeň-sever;Plzeňský
+2303;454;2300;Plzeň-jih;Plzeňský
+2304;454;2300;Blovice;Plzeňský
+2305;454;2300;Domažlice;Plzeňský
+2306;454;2300;Horažďovice;Plzeňský
+2307;454;2300;Horšovský Týn;Plzeňský
+2308;454;2300;Klatovy;Plzeňský
+2309;454;2300;Kralovice;Plzeňský
+2310;454;2300;Nepomuk;Plzeňský
+2311;454;2300;Přeštice;Plzeňský
+2312;454;2300;Rokycany;Plzeňský
+2313;454;2300;Tachov;Plzeňský
+2314;454;2300;Stříbro;Plzeňský
+2315;454;2300;Sušice;Plzeňský
+2401;455;2400;Karlovy Vary;Karlovarský
+2402;455;2400;Aš;Karlovarský
+2403;455;2400;Cheb;Karlovarský
+2404;455;2400;Kraslice;Karlovarský
+2405;455;2400;Mariánské Lázně;Karlovarský
+2406;455;2400;Ostrov;Karlovarský
+2407;455;2400;Sokolov;Karlovarský
+2501;456;2500;Ústí nad Labem;Ústecký
+2502;456;2500;Bílina;Ústecký
+2503;456;2500;Děčín;Ústecký
+2504;456;2500;Chomutov;Ústecký
+2505;456;2500;Kadaň;Ústecký
+2506;456;2500;Libochovice;Ústecký
+2507;456;2500;Litoměřice;Ústecký
+2508;456;2500;Litvínov;Ústecký
+2509;456;2500;Louny;Ústecký
+2510;456;2500;Most;Ústecký
+2511;456;2500;Podbořany;Ústecký
+2512;456;2500;Roudnice nad Labem;Ústecký
+2513;456;2500;Rumburk;Ústecký
+2514;456;2500;Teplice;Ústecký
+2515;456;2500;Žatec;Ústecký
+2601;457;2600;Liberec;Liberecký
+2602;457;2600;Česká Lípa;Liberecký
+2603;457;2600;Frýdlant;Liberecký
+2604;457;2600;Jablonec nad Nisou;Liberecký
+2605;457;2600;Jilemnice;Liberecký
+2606;457;2600;Nový Bor;Liberecký
+2607;457;2600;Semily;Liberecký
+2608;457;2600;Tanvald;Liberecký
+2609;457;2600;Turnov;Liberecký
+2610;457;2600;Železný Brod;Liberecký
+2701;458;2700;Hradec Králové;Královéhradecký
+2702;458;2700;Broumov;Královéhradecký
+2703;458;2700;Dobruška;Královéhradecký
+2704;458;2700;Dvůr Králové nad Labem;Královéhradecký
+2705;458;2700;Hořice;Královéhradecký
+2706;458;2700;Jaroměř;Královéhradecký
+2707;458;2700;Jičín;Královéhradecký
+2708;458;2700;Kostelec nad Orlicí;Královéhradecký
+2709;458;2700;Náchod;Královéhradecký
+2710;458;2700;Nová Paka;Královéhradecký
+2711;458;2700;Nový Bydžov;Královéhradecký
+2712;458;2700;Rychnov nad Kněžnou;Královéhradecký
+2713;458;2700;Trutnov;Královéhradecký
+2714;458;2700;Vrchlabí;Královéhradecký
+2801;459;2800;Pardubice;Pardubický
+2802;459;2800;Hlinsko;Pardubický
+2803;459;2800;Holice;Pardubický
+2804;459;2800;Chrudim;Pardubický
+2805;459;2800;Litomyšl;Pardubický
+2806;459;2800;Moravská Třebová;Pardubický
+2807;459;2800;Přelouč;Pardubický
+2808;459;2800;Svitavy;Pardubický
+2809;459;2800;Ústí nad Orlicí;Pardubický
+2810;459;2800;Vysoké Mýto;Pardubický
+2811;459;2800;Žamberk;Pardubický
+2901;460;2900;Jihlava;Vysočina
+2902;460;2900;Bystřice nad Pernštejnem;Vysočina
+2903;460;2900;Havlíčkův Brod;Vysočina
+2904;460;2900;Humpolec;Vysočina
+2905;460;2900;Chotěboř;Vysočina
+2906;460;2900;Ledeč nad Sázavou;Vysočina
+2907;460;2900;Moravské Budějovice;Vysočina
+2908;460;2900;Náměšť nad Oslavou;Vysočina
+2909;460;2900;Pacov;Vysočina
+2910;460;2900;Pelhřimov;Vysočina
+2911;460;2900;Telč;Vysočina
+2912;460;2900;Třebíč;Vysočina
+2913;460;2900;Velké Meziříčí;Vysočina
+2914;460;2900;Žďár nad Sázavou;Vysočina
+3001;461;3000;Brno I;Jihomoravský
+3002;461;3000;Brno II;Jihomoravský
+3003;461;3000;Brno III;Jihomoravský
+3004;461;3000;Brno IV;Jihomoravský
+3005;461;3000;Brno-venkov;Jihomoravský
+3006;461;3000;Blansko;Jihomoravský
+3007;461;3000;Boskovice;Jihomoravský
+3008;461;3000;Břeclav;Jihomoravský
+3009;461;3000;Bučovice;Jihomoravský
+3010;461;3000;Hodonín;Jihomoravský
+3011;461;3000;Hustopeče;Jihomoravský
+3012;461;3000;Ivančice;Jihomoravský
+3013;461;3000;Kyjov;Jihomoravský
+3014;461;3000;Mikulov;Jihomoravský
+3015;461;3000;Moravský Krumlov;Jihomoravský
+3016;461;3000;Slavkov u Brna;Jihomoravský
+3017;461;3000;Tišnov;Jihomoravský
+3018;461;3000;Veselí nad Moravou;Jihomoravský
+3019;461;3000;Vyškov;Jihomoravský
+3020;461;3000;Znojmo;Jihomoravský
+3101;462;3100;Olomouc;Olomoucký
+3102;462;3100;Hranice;Olomoucký
+3103;462;3100;Jeseník;Olomoucký
+3104;462;3100;Konice;Olomoucký
+3105;462;3100;Litovel;Olomoucký
+3106;462;3100;Prostějov;Olomoucký
+3107;462;3100;Přerov;Olomoucký
+3108;462;3100;Šternberk;Olomoucký
+3109;462;3100;Šumperk;Olomoucký
+3110;462;3100;Zábřeh;Olomoucký
+3201;463;3200;Ostrava I;Moravskoslezský
+3202;463;3200;Ostrava II;Moravskoslezský
+3203;463;3200;Ostrava III;Moravskoslezský
+3204;463;3200;Bohumín;Moravskoslezský
+3205;463;3200;Bruntál;Moravskoslezský
+3206;463;3200;Český Těšín;Moravskoslezský
+3207;463;3200;Frýdek-Místek;Moravskoslezský
+3208;463;3200;Frýdlant nad Ostravicí;Moravskoslezský
+3209;463;3200;Fulnek;Moravskoslezský
+3210;463;3200;Havířov;Moravskoslezský
+3211;463;3200;Hlučín;Moravskoslezský
+3212;463;3200;Karviná;Moravskoslezský
+3213;463;3200;Kopřivnice;Moravskoslezský
+3214;463;3200;Krnov;Moravskoslezský
+3215;463;3200;Nový Jičín;Moravskoslezský
+3216;463;3200;Opava;Moravskoslezský
+3217;463;3200;Orlová;Moravskoslezský
+3218;463;3200;Třinec;Moravskoslezský
+3301;464;3300;Zlín;Zlínský
+3302;464;3300;Bystřice pod Hostýnem;Zlínský
+3303;464;3300;Holešov;Zlínský
+3304;464;3300;Kroměříž;Zlínský
+3305;464;3300;Luhačovice;Zlínský
+3306;464;3300;Otrokovice;Zlínský
+3307;464;3300;Rožnov pod Radhoštěm;Zlínský
+3308;464;3300;Uherský Brod;Zlínský
+3309;464;3300;Uherské Hradiště;Zlínský
+3310;464;3300;Valašské Meziříčí;Zlínský
+3311;464;3300;Valašské Klobouky;Zlínský
+3312;464;3300;Vsetín;Zlínský
+4000;13;4000;Specializovaný finanční úřad;Celostátní

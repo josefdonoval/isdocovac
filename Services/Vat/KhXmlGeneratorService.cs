@@ -78,8 +78,12 @@ public class KhXmlGeneratorService : IKhXmlGeneratorService
             new XAttribute("id_dats", c.DataBoxId ?? string.Empty),
             new XAttribute("naz_obce", c.City ?? string.Empty),
             new XAttribute("psc", c.Zip ?? string.Empty),
-            new XAttribute("stat", CountryName(c.CountryCode)),
-            new XAttribute("ulice", c.Street ?? string.Empty));
+            new XAttribute("stat", CountryName(c.CountryCode)));
+
+        if (!string.IsNullOrWhiteSpace(c.Street))
+        {
+            element.Add(new XAttribute("ulice", c.Street));
+        }
 
         if (c.IsLegalEntity)
         {

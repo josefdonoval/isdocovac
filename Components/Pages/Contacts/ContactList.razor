@@ -1,0 +1,125 @@
+@page "/contacts"
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject IContactProvider ContactProvider
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Kontakty</PageTitle>
+
+<div class="container py-4" style="max-width: 1100px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0">Kontakty</h1>
+        <a class="btn btn-primary" href="/contacts/new">+ Nový kontakt</a>
+    </div>
+
+    @if (contacts == null)
+    {
+        <p class="text-muted">Načítám…</p>
+    }
+    else if (contacts.Count == 0)
+    {
+        <div class="alert alert-info">Zatím nemáte žádné kontakty. Přidejte první kontakt přes tlačítko nahoře.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Název</th>
+                        <th>Typ</th>
+                        <th>IČO</th>
+                        <th>DIČ</th>
+                        <th>Město</th>
+                        <th class="text-end">Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in contacts)
+                    {
+                        <tr>
+                            <td>
+                                <a href="@($"/contacts/{c.Id}")" class="text-decoration-none fw-semibold">
+                                    @DisplayName(c)
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge @KindBadgeClass(c.Kind)">@KindLabel(c.Kind)</span>
+                            </td>
+                            <td>@c.Ico</td>
+                            <td>@c.Dic</td>
+                            <td>@c.City</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-secondary" href="@($"/contacts/{c.Id}")">Upravit</a>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c.Id)">Smazat</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private List<Contact>? contacts;
+    private Guid userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask!;
+        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !Guid.TryParse(claim.Value, out userId))
+        {
+            NavigationManager.NavigateTo("/auth/login");
+            return;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var list = await ContactProvider.ListDirectoryAsync(userId);
+        contacts = list.ToList();
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        await ContactProvider.DeleteAsync(id);
+        await ReloadAsync();
+    }
+
+    private static string DisplayName(Contact c)
+    {
+        if (!string.IsNullOrWhiteSpace(c.CompanyName)) return c.CompanyName!;
+        var full = string.Join(" ", new[] { c.Titul, c.FirstName, c.LastName }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        return string.IsNullOrWhiteSpace(full) ? "(bez názvu)" : full;
+    }
+
+    private static string KindLabel(ContactKind k) => k switch
+    {
+        ContactKind.Client => "Odběratel",
+        ContactKind.Supplier => "Dodavatel",
+        ContactKind.Both => "Obojí",
+        _ => k.ToString(),
+    };
+
+    private static string KindBadgeClass(ContactKind k) => k switch
+    {
+        ContactKind.Client => "text-bg-primary",
+        ContactKind.Supplier => "text-bg-success",
+        ContactKind.Both => "text-bg-info",
+        _ => "text-bg-secondary",
+    };
+}

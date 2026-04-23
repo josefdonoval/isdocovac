@@ -4,10 +4,12 @@
 @using Isdocovac.Models
 @using Isdocovac.Models.Enums
 @using Isdocovac.Providers
+@using Isdocovac.Services.CodeLists
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @attribute [Authorize]
 @inject IContactProvider ContactProvider
+@inject ICodeListService CodeLists
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
@@ -70,8 +72,9 @@
             <h5 class="mt-4">Adresa</h5>
             <div class="row">
                 <div class="col-md-6 mb-3">
-                    <label class="form-label">Ulice *</label>
+                    <label class="form-label">Ulice</label>
                     <InputText class="form-control" @bind-Value="model.Street" />
+                    <div class="form-text">Nechte prázdné, pokud obec nemá ulice (FÚ akceptuje jen obec + č.p.).</div>
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Č. popisné *</label>
@@ -109,17 +112,37 @@
 
             <h5 class="mt-4">Finanční úřad + evidence</h5>
             <div class="row">
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">c_ufo *</label>
-                    <InputNumber class="form-control" @bind-Value="model.TaxOfficeCode" />
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Finanční úřad (c_ufo) *</label>
+                    <InputSelect class="form-select" @bind-Value="model.TaxOfficeCode"
+                                 @bind-Value:after="OnTaxOfficeChanged">
+                        <option value="">-- vyberte --</option>
+                        @foreach (var office in CodeLists.TaxOffices)
+                        {
+                            <option value="@office.CUfo">@office.CUfo — @office.Nazev</option>
+                        }
+                    </InputSelect>
                 </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">c_pracufo</label>
-                    <InputNumber class="form-control" @bind-Value="model.TaxOfficeBranchCode" />
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Územní pracoviště (c_pracufo)</label>
+                    <InputSelect class="form-select" @bind-Value="model.TaxOfficeBranchCode"
+                                 disabled="@(model.TaxOfficeCode == null)">
+                        <option value="">-- vyberte --</option>
+                        @foreach (var branch in CodeLists.GetBranchesFor(model.TaxOfficeCode))
+                        {
+                            <option value="@branch.CPracufo">@branch.CPracufo — @branch.Nazev</option>
+                        }
+                    </InputSelect>
                 </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">CZ-NACE (c_okec)</label>
-                    <InputText class="form-control" @bind-Value="model.OkecCode" />
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">CZ-NACE sekce (c_okec)</label>
+                    <InputSelect class="form-select" @bind-Value="model.OkecCode">
+                        <option value="">-- vyberte --</option>
+                        @foreach (var nace in CodeLists.NaceSections)
+                        {
+                            <option value="@nace.Sekce">@nace.Sekce — @nace.NazevCz</option>
+                        }
+                    </InputSelect>
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label">ID datové schránky</label>
@@ -192,6 +215,17 @@
         }
     }
 
+    private void OnTaxOfficeChanged()
+    {
+        if (model == null) return;
+        var branches = CodeLists.GetBranchesFor(model.TaxOfficeCode);
+        if (model.TaxOfficeBranchCode.HasValue
+            && branches.All(b => b.CPracufo != model.TaxOfficeBranchCode.Value))
+        {
+            model.TaxOfficeBranchCode = null;
+        }
+    }
+
     public class ContactFormModel
     {
         public bool IsLegalEntity { get; set; }
@@ -200,7 +234,7 @@
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
         public string? Titul { get; set; }
-        [Required] public string? Street { get; set; }
+        public string? Street { get; set; }
         [Required] public string? HouseNumber { get; set; }
         public string? OrientNumber { get; set; }
         [Required] public string? City { get; set; }

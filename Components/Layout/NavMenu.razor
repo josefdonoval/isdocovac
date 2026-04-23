@@ -16,16 +16,23 @@
             <span>Home</span>
         </NavLink>
 
-        <div class="nav-section">Invoices</div>
+        <div class="nav-section">Faktury</div>
 
         <NavLink class="nav-link" href="invoices" Match="NavLinkMatch.All">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
             <span>All Invoices</span>
         </NavLink>
 
-        <NavLink class="nav-link" href="invoices/create">
+        <NavLink class="nav-link" href="invoices/create-outbound">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
-            <span>Create Invoice</span>
+            <span>Vystavit fakturu</span>
+        </NavLink>
+
+        <div class="nav-section">Náklady</div>
+
+        <NavLink class="nav-link" href="invoices/create-inbound">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M6 9l6-6 6 6M4 21h16"/></svg>
+            <span>Vytvořit náklad</span>
         </NavLink>
 
         <div class="nav-section">Import Sources</div>
@@ -43,6 +50,13 @@
         <NavLink class="nav-link" href="fakturoid/staging">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"/><path d="M12 12v9m-4-4 4 4 4-4"/></svg>
             <span>Fakturoid Staging</span>
+        </NavLink>
+
+        <div class="nav-section">Kontakty</div>
+
+        <NavLink class="nav-link" href="contacts">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Kontakty</span>
         </NavLink>
 
         <div class="nav-section">Reporting</div>

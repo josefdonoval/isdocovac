@@ -56,12 +56,16 @@ public class DphXmlGeneratorService : IDphXmlGeneratorService
             new XAttribute("dic", c.Dic ?? string.Empty),
             new XAttribute("email", c.Email ?? string.Empty),
             new XAttribute("c_telef", c.Phone ?? string.Empty),
-            new XAttribute("ulice", c.Street ?? string.Empty),
             new XAttribute("naz_obce", c.City ?? string.Empty),
             new XAttribute("psc", c.Zip ?? string.Empty),
             new XAttribute("stat", CountryName(c.CountryCode)),
             new XAttribute("c_pop", c.HouseNumber ?? string.Empty),
             new XAttribute("c_orient", c.OrientNumber ?? string.Empty));
+
+        if (!string.IsNullOrWhiteSpace(c.Street))
+        {
+            element.Add(new XAttribute("ulice", c.Street));
+        }
 
         if (c.IsLegalEntity)
         {

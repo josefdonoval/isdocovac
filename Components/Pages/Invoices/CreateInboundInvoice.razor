@@ -1,0 +1,8 @@
+@page "/invoices/create-inbound"
+@using Isdocovac.Models.Enums
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Vytvořit náklad</PageTitle>
+
+<InvoiceFormEditor Direction="InvoiceDirection.Inbound" />

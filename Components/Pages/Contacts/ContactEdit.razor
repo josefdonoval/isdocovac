@@ -1,0 +1,387 @@
+@page "/contacts/new"
+@page "/contacts/{Id:guid}"
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@using Isdocovac.Services.Ares
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject IContactProvider ContactProvider
+@inject IAresLookupService AresLookup
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>@(IsNew ? "Nový kontakt" : "Upravit kontakt")</PageTitle>
+
+<div class="container py-4" style="max-width: 800px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0">@(IsNew ? "Nový kontakt" : "Upravit kontakt")</h1>
+        <a href="/contacts" class="btn btn-outline-secondary">‹ Zpět</a>
+    </div>
+
+    @if (IsNew)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <label class="form-label fw-semibold">Zadejte IČO odběratele nebo dodavatele</label>
+                <div class="input-group">
+                    <input class="form-control" placeholder="např. 27877329" @bind="aresIco" @bind:event="oninput" disabled="@aresBusy" />
+                    <button class="btn btn-primary" type="button" @onclick="LookupAresAsync" disabled="@(aresBusy || string.IsNullOrWhiteSpace(aresIco))">
+                        @(aresBusy ? "Hledám…" : "Najít v ARES")
+                    </button>
+                </div>
+                <div class="form-text">Údaje se předvyplní z registru ARES. Zahraniční subjekty vyplňte ručně níže.</div>
+                @if (!string.IsNullOrEmpty(aresError))
+                {
+                    <div class="alert alert-warning mt-2 mb-0">@aresError</div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (model != null)
+    {
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="btn-group w-100 mb-4" role="group">
+                @foreach (var (kind, label) in KindOptions)
+                {
+                    <input type="radio" class="btn-check" name="kind"
+                           id="@($"kind-{kind}")" autocomplete="off"
+                           checked="@(model.Kind == kind)"
+                           @onchange="@(() => model.Kind = kind)" />
+                    <label class="btn btn-outline-success" for="@($"kind-{kind}")">@label</label>
+                }
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Typ osoby</label>
+                    <select class="form-select" @bind="model.IsLegalEntity">
+                        <option value="true">Právnická osoba</option>
+                        <option value="false">Fyzická osoba</option>
+                    </select>
+                </div>
+            </div>
+
+            @if (model.IsLegalEntity)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Název *</label>
+                    <InputText class="form-control" @bind-Value="model.CompanyName" />
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Titul</label>
+                        <InputText class="form-control" @bind-Value="model.Titul" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Jméno *</label>
+                        <InputText class="form-control" @bind-Value="model.FirstName" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Příjmení *</label>
+                        <InputText class="form-control" @bind-Value="model.LastName" />
+                    </div>
+                </div>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">Hlavní email</label>
+                <InputText type="email" class="form-control" @bind-Value="model.Email" />
+            </div>
+
+            <h5 class="mt-4">Adresa</h5>
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Ulice</label>
+                    <InputText class="form-control" @bind-Value="model.Street" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Č. popisné</label>
+                    <InputText class="form-control" @bind-Value="model.HouseNumber" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Č. orient.</label>
+                    <InputText class="form-control" @bind-Value="model.OrientNumber" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Město</label>
+                    <InputText class="form-control" @bind-Value="model.City" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">PSČ</label>
+                    <InputText class="form-control" @bind-Value="model.Zip" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Země (ISO2) *</label>
+                    <InputText class="form-control" @bind-Value="model.CountryCode" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">IČO</label>
+                    <InputText class="form-control" @bind-Value="model.Ico" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">DIČ</label>
+                    <InputText class="form-control" @bind-Value="model.Dic" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Telefon</label>
+                <InputText class="form-control" @bind-Value="model.Phone" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div class="alert @(statusSuccess ? "alert-success" : "alert-danger")">@statusMessage</div>
+            }
+
+            <div class="d-flex justify-content-between gap-2 mt-4">
+                <div>
+                    @if (!IsNew)
+                    {
+                        <button type="button" class="btn btn-outline-danger" @onclick="DeleteAsync" disabled="@saving">Smazat</button>
+                    }
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="/contacts" class="btn btn-outline-secondary">Zrušit</a>
+                    <button type="submit" class="btn btn-primary" disabled="@saving">
+                        @(saving ? "Ukládám…" : "Uložit kontakt")
+                    </button>
+                </div>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private static readonly (ContactKind Kind, string Label)[] KindOptions =
+    {
+        (ContactKind.Client, "Odběratel"),
+        (ContactKind.Supplier, "Dodavatel"),
+        (ContactKind.Both, "Obojí"),
+    };
+
+    private ContactFormModel? model;
+    private Guid userId;
+    private bool saving;
+    private bool statusSuccess;
+    private string? statusMessage;
+
+    private string? aresIco;
+    private bool aresBusy;
+    private string? aresError;
+
+    private bool IsNew => Id == null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask!;
+        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim == null || !Guid.TryParse(claim.Value, out userId))
+        {
+            NavigationManager.NavigateTo("/auth/login");
+            return;
+        }
+
+        if (Id is Guid id)
+        {
+            var existing = await ContactProvider.GetByIdAsync(id);
+            if (existing == null || existing.UserId != userId || existing.Kind == ContactKind.OwnCompany)
+            {
+                NavigationManager.NavigateTo("/contacts");
+                return;
+            }
+            model = ContactFormModel.From(existing);
+        }
+        else
+        {
+            model = new ContactFormModel();
+        }
+    }
+
+    private async Task LookupAresAsync()
+    {
+        aresError = null;
+        if (string.IsNullOrWhiteSpace(aresIco)) return;
+        aresBusy = true;
+        try
+        {
+            var result = await AresLookup.LookupByIcoAsync(aresIco);
+            if (result == null)
+            {
+                aresError = $"Subjekt s IČO {aresIco} nebyl v ARES nalezen.";
+                return;
+            }
+            model ??= new ContactFormModel();
+            model.IsLegalEntity = result.IsLegalEntity;
+            if (result.IsLegalEntity)
+            {
+                model.CompanyName = result.Name;
+            }
+            else
+            {
+                SplitPersonName(result.Name, model);
+            }
+            model.Ico = result.Ico;
+            model.Dic = result.Dic;
+            model.Street = result.Street;
+            model.HouseNumber = result.HouseNumber;
+            model.OrientNumber = result.OrientNumber;
+            model.City = result.City;
+            model.Zip = result.Zip;
+            model.CountryCode = result.CountryCode;
+        }
+        catch (Exception ex)
+        {
+            aresError = $"Chyba volání ARES: {ex.Message}";
+        }
+        finally
+        {
+            aresBusy = false;
+        }
+    }
+
+    private static void SplitPersonName(string? fullName, ContactFormModel m)
+    {
+        m.Titul = null; m.FirstName = null; m.LastName = null;
+        if (string.IsNullOrWhiteSpace(fullName)) return;
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var tituls = new List<string>();
+        var rest = new List<string>();
+        foreach (var p in parts)
+        {
+            if (p.EndsWith('.')) tituls.Add(p);
+            else rest.Add(p);
+        }
+        m.Titul = tituls.Count > 0 ? string.Join(' ', tituls) : null;
+        if (rest.Count == 1) { m.LastName = rest[0]; }
+        else if (rest.Count >= 2)
+        {
+            m.FirstName = rest[0];
+            m.LastName = string.Join(' ', rest.Skip(1));
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        statusMessage = null;
+        try
+        {
+            var entity = model!.ToEntity(userId, Id);
+            if (IsNew)
+            {
+                var created = await ContactProvider.AddAsync(entity);
+                NavigationManager.NavigateTo($"/contacts/{created.Id}");
+            }
+            else
+            {
+                await ContactProvider.UpdateAsync(entity);
+                statusSuccess = true;
+                statusMessage = "Uloženo.";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba: {ex.Message}";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not Guid id) return;
+        saving = true;
+        try
+        {
+            await ContactProvider.DeleteAsync(id);
+            NavigationManager.NavigateTo("/contacts");
+        }
+        finally { saving = false; }
+    }
+
+    public class ContactFormModel
+    {
+        public ContactKind Kind { get; set; } = ContactKind.Client;
+        public bool IsLegalEntity { get; set; } = true;
+        public string? CompanyName { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Titul { get; set; }
+        public string? Email { get; set; }
+        public string? Ico { get; set; }
+        public string? Dic { get; set; }
+        public string? Street { get; set; }
+        public string? HouseNumber { get; set; }
+        public string? OrientNumber { get; set; }
+        public string? City { get; set; }
+        public string? Zip { get; set; }
+        [Required] public string CountryCode { get; set; } = "CZ";
+        public string? Phone { get; set; }
+
+        public static ContactFormModel From(Contact c) => new()
+        {
+            Kind = c.Kind,
+            IsLegalEntity = c.IsLegalEntity,
+            CompanyName = c.CompanyName,
+            FirstName = c.FirstName,
+            LastName = c.LastName,
+            Titul = c.Titul,
+            Email = c.Email,
+            Ico = c.Ico,
+            Dic = c.Dic,
+            Street = c.Street,
+            HouseNumber = c.HouseNumber,
+            OrientNumber = c.OrientNumber,
+            City = c.City,
+            Zip = c.Zip,
+            CountryCode = c.CountryCode,
+            Phone = c.Phone,
+        };
+
+        public Contact ToEntity(Guid userId, Guid? id) => new()
+        {
+            Id = id ?? Guid.Empty,
+            UserId = userId,
+            Kind = Kind == ContactKind.OwnCompany ? ContactKind.Client : Kind,
+            IsLegalEntity = IsLegalEntity,
+            CompanyName = IsLegalEntity ? CompanyName : null,
+            FirstName = IsLegalEntity ? null : FirstName,
+            LastName = IsLegalEntity ? null : LastName,
+            Titul = IsLegalEntity ? null : Titul,
+            Email = Email,
+            Ico = Ico,
+            Dic = Dic,
+            Street = Street,
+            HouseNumber = HouseNumber,
+            OrientNumber = OrientNumber,
+            City = City,
+            Zip = Zip,
+            CountryCode = string.IsNullOrWhiteSpace(CountryCode) ? "CZ" : CountryCode.ToUpperInvariant(),
+            Phone = Phone,
+            IsActive = true,
+        };
+    }
+}

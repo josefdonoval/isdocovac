@@ -18,29 +18,17 @@
 
 <PageTitle>Monthly VAT</PageTitle>
 
-<div class="container py-4" style="max-width: 900px;">
-    <h1>Monthly VAT (DPH + KH)</h1>
-    <p class="text-muted">Vygeneruje přiznání DPH (DPHDP3) a kontrolní hlášení (DPHKH1) pro vybraný měsíc.</p>
-
-    <div class="row mb-3">
-        <div class="col-md-3">
-            <label class="form-label">Rok</label>
-            <InputNumber class="form-control" @bind-Value="year" />
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Měsíc</label>
-            <InputNumber class="form-control" @bind-Value="month" />
-        </div>
-        <div class="col-md-6 d-flex align-items-end gap-2">
-            <button type="button" class="btn btn-primary" @onclick="GenerateAsync" disabled="@busy">
-                @(busy ? "Generuji…" : "Generate")
-            </button>
-            <button type="button" class="btn btn-outline-secondary" @onclick="PreviewAsync" disabled="@busy">
-                Preview
-            </button>
-        </div>
+<div class="container py-4" style="max-width: 1100px;">
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => ChangeYear(-1)" disabled="@busy">‹</button>
+        <div class="border rounded px-3 py-1 fw-semibold">@year</div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => ChangeYear(1)" disabled="@busy">›</button>
     </div>
 
+    @if (!string.IsNullOrEmpty(infoMessage))
+    {
+        <div class="alert alert-info">@infoMessage</div>
+    }
     @if (errors.Count > 0)
     {
         <div class="alert alert-danger">
@@ -54,14 +42,33 @@
         </div>
     }
 
-    @if (!string.IsNullOrEmpty(infoMessage))
+    @for (var q = 1; q <= 4; q++)
     {
-        <div class="alert alert-info">@infoMessage</div>
+        var quarter = q;
+        <h3 class="mt-4">@quarter. čtvrtletí @year</h3>
+        <div class="list-group mb-3">
+            @for (var mi = 0; mi < 3; mi++)
+            {
+                var m = (quarter - 1) * 3 + mi + 1;
+                var isCurrent = year == DateTime.Now.Year && m == DateTime.Now.Month;
+                <div class="list-group-item d-flex align-items-center justify-content-between @(isCurrent ? "bg-warning-subtle" : "")">
+                    <div class="fw-medium">@MonthName(m)</div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                @onclick="() => GenerateDphAsync(year, m)" disabled="@busy">DPH</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                @onclick="() => GenerateKhAsync(year, m)" disabled="@busy">Kontrolní hlášení</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm"
+                                @onclick="() => PreviewAsync(year, m)" disabled="@busy">Náhled</button>
+                    </div>
+                </div>
+            }
+        </div>
     }
 
     @if (report != null)
     {
-        <h4 class="mt-4">Souhrn</h4>
+        <h4 class="mt-4">Souhrn — @MonthName(report.Month) @report.Year</h4>
         <div class="table-responsive">
             <table class="table table-sm">
                 <tbody>
@@ -76,8 +83,7 @@
                 </tbody>
             </table>
         </div>
-
-        <div class="small text-muted mt-3">
+        <div class="small text-muted">
             KH rows: A2 = @report.A2Rows.Count, A4 = @report.A4Rows.Count, B2 = @report.B2Rows.Count.
             A5 agregát: @Fmt(report.A5Aggregate.Base23) Kč, B3 agregát: @Fmt(report.B3Aggregate.Base23) Kč.
         </div>
@@ -89,7 +95,6 @@
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     private int year = DateTime.Now.Year;
-    private int month = DateTime.Now.Month == 1 ? 12 : DateTime.Now.Month - 1;
     private bool busy;
     private string? infoMessage;
     private List<string> errors = new();
@@ -112,7 +117,15 @@
         }
     }
 
-    private async Task<VatMonthlyReport?> BuildReportAsync()
+    private void ChangeYear(int delta)
+    {
+        year += delta;
+        report = null;
+        infoMessage = null;
+        errors.Clear();
+    }
+
+    private async Task<VatMonthlyReport?> BuildReportAsync(int y, int m)
     {
         errors.Clear();
         infoMessage = null;
@@ -127,16 +140,16 @@
             return null;
         }
 
-        var invoices = await InvoiceProvider.GetVatMonthInvoicesAsync(userId, year, month);
+        var invoices = await InvoiceProvider.GetVatMonthInvoicesAsync(userId, y, m);
         if (invoices.Count == 0)
         {
-            infoMessage = $"Žádné faktury pro {month}/{year}.";
+            infoMessage = $"Žádné faktury pro {MonthName(m)} {y}.";
             return null;
         }
 
         try
         {
-            return await VatCalculationService.BuildAsync(invoices, own, year, month);
+            return await VatCalculationService.BuildAsync(invoices, own, y, m);
         }
         catch (VatExportValidationException ex)
         {
@@ -145,36 +158,50 @@
         }
     }
 
-    private async Task PreviewAsync()
+    private async Task PreviewAsync(int y, int m)
     {
         busy = true;
-        try
-        {
-            report = await BuildReportAsync();
-        }
+        try { report = await BuildReportAsync(y, m); }
         finally { busy = false; }
     }
 
-    private async Task GenerateAsync()
+    private async Task GenerateDphAsync(int y, int m)
     {
         busy = true;
         try
         {
-            report = await BuildReportAsync();
+            report = await BuildReportAsync(y, m);
             if (report == null) return;
-
-            var dph = DphGenerator.Generate(report);
-            var kh = KhGenerator.Generate(report);
-
+            var xml = DphGenerator.Generate(report);
             await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
-                $"dph-{year}-{month}m.xml", dph, "application/xml");
-            await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
-                $"kontrolni_hlaseni-{year}-{month}m.xml", kh, "application/xml");
-
-            infoMessage = "XML soubory staženy.";
+                $"dph-{y}-{m}m.xml", xml, "application/xml");
+            infoMessage = $"DPH pro {MonthName(m)} {y} staženo.";
         }
         finally { busy = false; }
     }
+
+    private async Task GenerateKhAsync(int y, int m)
+    {
+        busy = true;
+        try
+        {
+            report = await BuildReportAsync(y, m);
+            if (report == null) return;
+            var xml = KhGenerator.Generate(report);
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
+                $"kontrolni_hlaseni-{y}-{m}m.xml", xml, "application/xml");
+            infoMessage = $"Kontrolní hlášení pro {MonthName(m)} {y} staženo.";
+        }
+        finally { busy = false; }
+    }
+
+    private static readonly string[] MonthNames =
+    {
+        "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
+        "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"
+    };
+
+    private static string MonthName(int m) => MonthNames[m - 1];
 
     private static string Fmt(decimal value) =>
         value.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"));

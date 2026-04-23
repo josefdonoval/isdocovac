@@ -1,0 +1,77 @@
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@inject IContactProvider ContactProvider
+@inject NavigationManager NavigationManager
+
+<div>
+    <div class="input-group">
+        <select class="form-select" value="@SelectedContactId?.ToString()" @onchange="OnSelectionChanged" disabled="@Disabled">
+            <option value="">-- Vyberte kontakt --</option>
+            @foreach (var contact in _contacts)
+            {
+                <option value="@contact.Id">@FormatContact(contact)</option>
+            }
+        </select>
+        <a class="btn btn-outline-secondary" href="/contacts/new" target="_blank" title="Nový kontakt">+</a>
+    </div>
+    @if (_contacts.Count == 0)
+    {
+        <div class="form-text text-warning">
+            Žádné kontakty typu @KindLabel. <a href="/contacts/new" target="_blank">Vytvořit nový</a>.
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public ContactKind Kind { get; set; }
+    [Parameter] public Guid? SelectedContactId { get; set; }
+    [Parameter] public EventCallback<Contact?> OnContactSelected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private List<Contact> _contacts = new();
+
+    private string KindLabel => Kind == ContactKind.Client ? "Odběratel" : "Dodavatel";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserId == Guid.Empty)
+        {
+            _contacts = new();
+            return;
+        }
+
+        var primary = await ContactProvider.GetByKindAsync(UserId, Kind);
+        var both = await ContactProvider.GetByKindAsync(UserId, ContactKind.Both);
+        _contacts = primary.Concat(both)
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.CompanyName ?? ((c.LastName ?? "") + " " + (c.FirstName ?? "")).Trim())
+            .ToList();
+    }
+
+    private async Task OnSelectionChanged(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString();
+        Contact? selected = null;
+        if (!string.IsNullOrEmpty(raw) && Guid.TryParse(raw, out var id))
+        {
+            selected = _contacts.FirstOrDefault(c => c.Id == id);
+        }
+
+        SelectedContactId = selected?.Id;
+        if (OnContactSelected.HasDelegate)
+        {
+            await OnContactSelected.InvokeAsync(selected);
+        }
+    }
+
+    private static string FormatContact(Contact c)
+    {
+        var name = !string.IsNullOrWhiteSpace(c.CompanyName)
+            ? c.CompanyName
+            : $"{c.FirstName} {c.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(name)) name = "(bez názvu)";
+        return !string.IsNullOrWhiteSpace(c.Ico) ? $"{name} (IČO {c.Ico})" : name;
+    }
+}

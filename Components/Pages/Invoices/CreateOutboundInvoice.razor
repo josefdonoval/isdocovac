@@ -1,0 +1,8 @@
+@page "/invoices/create-outbound"
+@using Isdocovac.Models.Enums
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Vystavit fakturu</PageTitle>
+
+<InvoiceFormEditor Direction="InvoiceDirection.Outbound" />
