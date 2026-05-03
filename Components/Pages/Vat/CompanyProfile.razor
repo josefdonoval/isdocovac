@@ -45,10 +45,10 @@
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Typ osoby</label>
-                    <select class="form-select" @bind="model.IsLegalEntity">
+                    <InputSelect class="form-select" @bind-Value="model.IsLegalEntity">
                         <option value="false">Fyzická osoba (F)</option>
                         <option value="true">Právnická osoba (P)</option>
-                    </select>
+                    </InputSelect>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">DIČ (bez CZ prefixu) *</label>

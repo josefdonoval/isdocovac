@@ -168,9 +168,13 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Soft delete filters
+        // Soft delete filters — propagate to child entities so the "required end" warnings disappear
         modelBuilder.Entity<Invoice>().HasQueryFilter(i => !i.IsDeleted);
         modelBuilder.Entity<ParsedInvoice>().HasQueryFilter(p => !p.IsDeleted);
+        modelBuilder.Entity<InvoiceLine>().HasQueryFilter(x => !x.Invoice.IsDeleted);
+        modelBuilder.Entity<InvoicePayment>().HasQueryFilter(x => !x.Invoice.IsDeleted);
+        modelBuilder.Entity<InvoiceAttachment>().HasQueryFilter(x => !x.Invoice.IsDeleted);
+        modelBuilder.Entity<ParsedInvoiceProcessing>().HasQueryFilter(x => !x.ParsedInvoice.IsDeleted);
 
         modelBuilder.Entity<Invoice>(entity =>
         {
@@ -179,6 +183,11 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Distinct from ParsedInvoice.ImportedInvoice — silences the "separated into two relationships" warning.
+            entity.HasOne(e => e.SourceParsedInvoice)
+                .WithMany()
+                .HasForeignKey(e => e.ParsedInvoiceId);
         });
 
         modelBuilder.Entity<ParsedInvoice>(entity =>
@@ -188,6 +197,10 @@ public class ApplicationDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ImportedInvoice)
+                .WithMany()
+                .HasForeignKey(e => e.ImportedInvoiceId);
         });
 
         // Contact configuration

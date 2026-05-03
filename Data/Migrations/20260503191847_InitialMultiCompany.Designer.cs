@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Isdocovac.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260503165025_InitialMultiCompany")]
+    [Migration("20260503191847_InitialMultiCompany")]
     partial class InitialMultiCompany
     {
         /// <inheritdoc />

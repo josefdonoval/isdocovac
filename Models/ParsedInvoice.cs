@@ -208,7 +208,7 @@ public class ParsedInvoice
     [ForeignKey(nameof(CompanyId))]
     public Company Company { get; set; } = null!;
 
-    [ForeignKey(nameof(ImportedInvoiceId))]
+    // FK configured via fluent API in ApplicationDbContext.
     public Invoice? ImportedInvoice { get; set; }
 
     public ICollection<ParsedInvoiceProcessing> Processings { get; set; } = new List<ParsedInvoiceProcessing>();

@@ -210,7 +210,8 @@ public class Invoice
     [ForeignKey(nameof(FakturoidInvoiceId))]
     public FakturoidInvoice? SourceFakturoidInvoice { get; set; }
 
-    [ForeignKey(nameof(ParsedInvoiceId))]
+    // FK configured via fluent API in ApplicationDbContext to keep this relationship
+    // distinct from ParsedInvoice.ImportedInvoice.
     public ParsedInvoice? SourceParsedInvoice { get; set; }
 
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();

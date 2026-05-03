@@ -16,11 +16,11 @@ public interface ICompanyProvider
 
 public class CompanyProvider : ICompanyProvider
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
 
-    public CompanyProvider(ApplicationDbContext context)
+    public CompanyProvider(IDbContextFactory<ApplicationDbContext> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task<Company> CreateAsync(Company company)
@@ -30,23 +30,32 @@ public class CompanyProvider : ICompanyProvider
         company.CreatedAt = now;
         company.UpdatedAt = now;
         company.IsActive = true;
-        _context.Companies.Add(company);
-        await _context.SaveChangesAsync();
+
+        await using var context = _contextFactory.CreateDbContext();
+        context.Companies.Add(company);
+        await context.SaveChangesAsync();
         return company;
     }
 
-    public Task<Company?> GetByIdAsync(Guid companyId)
-        => _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+    public async Task<Company?> GetByIdAsync(Guid companyId)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+    }
 
     public async Task<IReadOnlyList<Company>> ListByOwnerAsync(Guid ownerUserId)
-        => await _context.Companies
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.Companies
             .Where(c => c.OwnerUserId == ownerUserId && c.IsActive)
             .OrderBy(c => c.Name)
             .ToListAsync();
+    }
 
     public async Task<Company> UpdateAsync(Company company)
     {
-        var existing = await _context.Companies.FirstOrDefaultAsync(c => c.Id == company.Id)
+        await using var context = _contextFactory.CreateDbContext();
+        var existing = await context.Companies.FirstOrDefaultAsync(c => c.Id == company.Id)
             ?? throw new InvalidOperationException($"Company {company.Id} not found.");
 
         existing.Name = company.Name;
@@ -72,21 +81,26 @@ public class CompanyProvider : ICompanyProvider
         existing.VatPeriod = company.VatPeriod;
         existing.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
         return existing;
     }
 
     public async Task SoftDeleteAsync(Guid companyId)
     {
-        var c = await _context.Companies.FindAsync(companyId);
+        await using var context = _contextFactory.CreateDbContext();
+        var c = await context.Companies.FindAsync(companyId);
         if (c != null)
         {
             c.IsActive = false;
             c.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
         }
     }
 
-    public Task<bool> UserOwnsAsync(Guid userId, Guid companyId)
-        => _context.Companies.AnyAsync(c => c.Id == companyId && c.OwnerUserId == userId && c.IsActive);
+    public async Task<bool> UserOwnsAsync(Guid userId, Guid companyId)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.Companies
+            .AnyAsync(c => c.Id == companyId && c.OwnerUserId == userId && c.IsActive);
+    }
 }
