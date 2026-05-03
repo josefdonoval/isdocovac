@@ -12,7 +12,7 @@ public class Invoice
     public Guid Id { get; set; }
 
     [Required]
-    public Guid UserId { get; set; }
+    public Guid CompanyId { get; set; }
 
     // Invoice Direction & Source
     [Required]
@@ -204,8 +204,8 @@ public class Invoice
     public DateTime UpdatedAt { get; set; }
 
     // Navigation properties
-    [ForeignKey(nameof(UserId))]
-    public User User { get; set; } = null!;
+    [ForeignKey(nameof(CompanyId))]
+    public Company Company { get; set; } = null!;
 
     [ForeignKey(nameof(FakturoidInvoiceId))]
     public FakturoidInvoice? SourceFakturoidInvoice { get; set; }

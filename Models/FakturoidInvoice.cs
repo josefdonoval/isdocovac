@@ -23,6 +23,7 @@ public class FakturoidInvoice
 
     // Timestamp Fields
     public DateTime? IssuedOn { get; set; }
+    public DateTime? TaxableSupplyDate { get; set; } // taxable_fulfillment_due (DUZP)
     public DateTime? SentAt { get; set; }
     public DateTime? PaidOn { get; set; }
     public DateTime? DueOn { get; set; }

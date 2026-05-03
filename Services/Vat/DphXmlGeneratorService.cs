@@ -48,7 +48,7 @@ public class DphXmlGeneratorService : IDphXmlGeneratorService
             new XAttribute("mesic", r.Month.ToString(CultureInfo.InvariantCulture)));
     }
 
-    private static XElement BuildVetaP(Contact c)
+    private static XElement BuildVetaP(Company c)
     {
         var element = new XElement("VetaP",
             new XAttribute("c_pracufo", c.TaxOfficeBranchCode?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),

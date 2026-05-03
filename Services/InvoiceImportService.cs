@@ -9,9 +9,9 @@ namespace Isdocovac.Services;
 
 public interface IInvoiceImportService
 {
-    Task<Invoice> ImportFromFakturoidAsync(Guid fakturoidInvoiceId, Guid userId);
-    Task<IEnumerable<Invoice>> BulkImportFromFakturoidAsync(IEnumerable<Guid> fakturoidInvoiceIds, Guid userId);
-    Task<Invoice> ImportFromParsedInvoiceAsync(Guid parsedInvoiceId, Guid userId);
+    Task<Invoice> ImportFromFakturoidAsync(Guid fakturoidInvoiceId, Guid companyId);
+    Task<IEnumerable<Invoice>> BulkImportFromFakturoidAsync(IEnumerable<Guid> fakturoidInvoiceIds, Guid companyId);
+    Task<Invoice> ImportFromParsedInvoiceAsync(Guid parsedInvoiceId, Guid companyId);
     Task<Invoice> ResyncFromFakturoidAsync(Guid invoiceId);
 }
 
@@ -34,7 +34,7 @@ public class InvoiceImportService : IInvoiceImportService
         _configuration = configuration;
     }
 
-    public async Task<Invoice> ImportFromFakturoidAsync(Guid fakturoidInvoiceId, Guid userId)
+    public async Task<Invoice> ImportFromFakturoidAsync(Guid fakturoidInvoiceId, Guid companyId)
     {
         var fakturoidInvoice = await _fakturoidInvoiceProvider.GetByIdAsync(fakturoidInvoiceId);
         if (fakturoidInvoice == null)
@@ -51,7 +51,7 @@ public class InvoiceImportService : IInvoiceImportService
         // Map FakturoidInvoice to Invoice
         var invoice = new Invoice
         {
-            UserId = userId,
+            CompanyId = companyId,
             Direction = InvoiceDirection.Outbound, // Fakturoid only handles issued invoices
             Source = InvoiceSource.Fakturoid,
             FakturoidInvoiceId = fakturoidInvoiceId,
@@ -69,6 +69,7 @@ public class InvoiceImportService : IInvoiceImportService
 
             // Dates
             IssuedOn = fakturoidInvoice.IssuedOn,
+            TaxableSupplyDate = fakturoidInvoice.TaxableSupplyDate ?? fakturoidInvoice.IssuedOn,
             SentAt = fakturoidInvoice.SentAt,
             PaidOn = fakturoidInvoice.PaidOn,
             DueOn = fakturoidInvoice.DueOn,
@@ -179,18 +180,18 @@ public class InvoiceImportService : IInvoiceImportService
         return createdInvoice;
     }
 
-    public async Task<IEnumerable<Invoice>> BulkImportFromFakturoidAsync(IEnumerable<Guid> fakturoidInvoiceIds, Guid userId)
+    public async Task<IEnumerable<Invoice>> BulkImportFromFakturoidAsync(IEnumerable<Guid> fakturoidInvoiceIds, Guid companyId)
     {
         var invoices = new List<Invoice>();
         foreach (var fakturoidInvoiceId in fakturoidInvoiceIds)
         {
-            var invoice = await ImportFromFakturoidAsync(fakturoidInvoiceId, userId);
+            var invoice = await ImportFromFakturoidAsync(fakturoidInvoiceId, companyId);
             invoices.Add(invoice);
         }
         return invoices;
     }
 
-    public async Task<Invoice> ImportFromParsedInvoiceAsync(Guid parsedInvoiceId, Guid userId)
+    public async Task<Invoice> ImportFromParsedInvoiceAsync(Guid parsedInvoiceId, Guid companyId)
     {
         var parsedInvoice = await _parsedInvoiceProvider.GetByIdAsync(parsedInvoiceId);
         if (parsedInvoice == null)
@@ -221,7 +222,7 @@ public class InvoiceImportService : IInvoiceImportService
         // Map ParsedInvoice to Invoice
         var invoice = new Invoice
         {
-            UserId = userId,
+            CompanyId = companyId,
             Direction = direction,
             Source = InvoiceSource.ISDOC,
             ParsedInvoiceId = parsedInvoiceId,
@@ -239,6 +240,7 @@ public class InvoiceImportService : IInvoiceImportService
 
             // Dates
             IssuedOn = parsedInvoice.IssuedOn,
+            TaxableSupplyDate = parsedInvoice.TaxableSupplyDate,
             DueOn = parsedInvoice.DueOn,
 
             // Financial

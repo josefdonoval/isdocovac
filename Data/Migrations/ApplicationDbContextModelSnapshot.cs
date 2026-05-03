@@ -70,6 +70,115 @@ namespace Isdocovac.Data.Migrations
                     b.ToTable("authentication_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Isdocovac.Models.Company", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("CompanyName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DataBoxId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Dic")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("HouseNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Ico")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsLegalEntity")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("OkecCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("OrientNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Street")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("TaxOfficeBranchCode")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TaxOfficeCode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Titul")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("VatPeriod")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Zip")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerUserId", "IsActive");
+
+                    b.ToTable("companies", (string)null);
+                });
+
             modelBuilder.Entity("Isdocovac.Models.Contact", b =>
                 {
                     b.Property<Guid>("Id")
@@ -79,6 +188,9 @@ namespace Isdocovac.Data.Migrations
                     b.Property<string>("City")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("CompanyName")
                         .HasMaxLength(255)
@@ -158,8 +270,8 @@ namespace Isdocovac.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                    b.Property<int>("VatPeriod")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Zip")
                         .HasMaxLength(20)
@@ -167,12 +279,9 @@ namespace Isdocovac.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_contacts_owncompany_unique")
-                        .HasFilter("\"Kind\" = 0");
+                    b.HasIndex("CompanyId");
 
-                    b.HasIndex("UserId", "Kind");
+                    b.HasIndex("CompanyId", "Kind");
 
                     b.ToTable("contacts");
                 });
@@ -200,6 +309,9 @@ namespace Isdocovac.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("ConnectedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -220,17 +332,14 @@ namespace Isdocovac.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
 
                     b.HasIndex("AccountSlug");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("CompanyId")
                         .IsUnique();
 
-                    b.HasIndex("UserId", "IsActive");
+                    b.HasIndex("CompanyId", "IsActive");
 
                     b.ToTable("fakturoid_connections", (string)null);
                 });
@@ -465,6 +574,9 @@ namespace Isdocovac.Data.Migrations
                     b.Property<string>("Tags")
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTime?>("TaxableSupplyDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Token")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -698,6 +810,9 @@ namespace Isdocovac.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -709,14 +824,11 @@ namespace Isdocovac.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
 
                     b.HasIndex("ExpiresAt");
 
-                    b.HasIndex("UserId", "StateHash")
+                    b.HasIndex("CompanyId", "StateHash")
                         .IsUnique();
 
                     b.ToTable("fakturoid_oauth_states", (string)null);
@@ -819,6 +931,9 @@ namespace Isdocovac.Data.Migrations
                     b.Property<string>("ClientZip")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ConstantSymbol")
                         .HasMaxLength(50)
@@ -972,9 +1087,6 @@ namespace Isdocovac.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("VariableSymbol")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -988,12 +1100,12 @@ namespace Isdocovac.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId");
+
                     b.HasIndex("FakturoidInvoiceId")
                         .IsUnique();
 
                     b.HasIndex("ParsedInvoiceId");
-
-                    b.HasIndex("UserId");
 
                     b.ToTable("invoices");
                 });
@@ -1191,6 +1303,9 @@ namespace Isdocovac.Data.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ConstantSymbol")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -1376,9 +1491,6 @@ namespace Isdocovac.Data.Migrations
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("ValidationErrors")
                         .HasColumnType("text");
 
@@ -1395,9 +1507,9 @@ namespace Isdocovac.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ImportedInvoiceId");
+                    b.HasIndex("CompanyId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("ImportedInvoiceId");
 
                     b.ToTable("parsed_invoices");
                 });
@@ -1496,6 +1608,9 @@ namespace Isdocovac.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ActiveCompanyId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1536,26 +1651,37 @@ namespace Isdocovac.Data.Migrations
                     b.ToTable("user_sessions", (string)null);
                 });
 
-            modelBuilder.Entity("Isdocovac.Models.Contact", b =>
+            modelBuilder.Entity("Isdocovac.Models.Company", b =>
                 {
-                    b.HasOne("Isdocovac.Models.User", "User")
+                    b.HasOne("Isdocovac.Models.User", "Owner")
                         .WithMany()
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("OwnerUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("User");
+                    b.Navigation("Owner");
+                });
+
+            modelBuilder.Entity("Isdocovac.Models.Contact", b =>
+                {
+                    b.HasOne("Isdocovac.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("Isdocovac.Models.FakturoidConnection", b =>
                 {
-                    b.HasOne("Isdocovac.Models.User", "User")
+                    b.HasOne("Isdocovac.Models.Company", "Company")
                         .WithMany()
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("User");
+                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("Isdocovac.Models.FakturoidInvoice", b =>
@@ -1604,15 +1730,21 @@ namespace Isdocovac.Data.Migrations
 
             modelBuilder.Entity("Isdocovac.Models.FakturoidOAuthState", b =>
                 {
-                    b.HasOne("Isdocovac.Models.User", null)
+                    b.HasOne("Isdocovac.Models.Company", null)
                         .WithMany()
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
             modelBuilder.Entity("Isdocovac.Models.Invoice", b =>
                 {
+                    b.HasOne("Isdocovac.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Isdocovac.Models.FakturoidInvoice", "SourceFakturoidInvoice")
                         .WithOne("ImportedInvoice")
                         .HasForeignKey("Isdocovac.Models.Invoice", "FakturoidInvoiceId");
@@ -1621,17 +1753,11 @@ namespace Isdocovac.Data.Migrations
                         .WithMany()
                         .HasForeignKey("ParsedInvoiceId");
 
-                    b.HasOne("Isdocovac.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Navigation("Company");
 
                     b.Navigation("SourceFakturoidInvoice");
 
                     b.Navigation("SourceParsedInvoice");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Isdocovac.Models.InvoiceAttachment", b =>
@@ -1669,19 +1795,19 @@ namespace Isdocovac.Data.Migrations
 
             modelBuilder.Entity("Isdocovac.Models.ParsedInvoice", b =>
                 {
+                    b.HasOne("Isdocovac.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Isdocovac.Models.Invoice", "ImportedInvoice")
                         .WithMany()
                         .HasForeignKey("ImportedInvoiceId");
 
-                    b.HasOne("Isdocovac.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Navigation("Company");
 
                     b.Navigation("ImportedInvoice");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Isdocovac.Models.ParsedInvoiceProcessing", b =>

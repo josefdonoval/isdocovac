@@ -9,10 +9,12 @@ public interface IMainInvoiceProvider
 {
     Task<Invoice?> GetByIdAsync(Guid invoiceId);
     Task<Invoice?> GetWithDetailsAsync(Guid invoiceId);
-    Task<IEnumerable<Invoice>> GetByUserIdAsync(Guid userId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
-    Task<int> GetCountAsync(Guid userId, InvoiceDirection? direction = null);
-    Task<int> GetCountForVatMonthAsync(Guid userId, int year, int month);
-    Task<IReadOnlyList<Invoice>> GetVatMonthInvoicesAsync(Guid userId, int year, int month);
+    Task<IEnumerable<Invoice>> GetByCompanyIdAsync(Guid companyId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
+    Task<int> GetCountAsync(Guid companyId, InvoiceDirection? direction = null);
+    Task<int> GetCountForVatMonthAsync(Guid companyId, int year, int month);
+    Task<IReadOnlyList<Invoice>> GetVatMonthInvoicesAsync(Guid companyId, int year, int month);
+    Task<IReadOnlyList<Invoice>> GetVatQuarterInvoicesAsync(Guid companyId, int year, int quarter);
+    Task<IReadOnlyList<Invoice>> GetInvoicesMissingRequiredDuzpAsync(Guid companyId, int year);
     Task<Invoice> CreateAsync(Invoice invoice);
     Task UpdateAsync(Invoice invoice);
     Task DeleteAsync(Guid invoiceId);
@@ -39,16 +41,16 @@ public class MainInvoiceProvider : IMainInvoiceProvider
             .Include(i => i.Lines)
             .Include(i => i.Payments)
             .Include(i => i.Attachments)
-            .Include(i => i.User)
+            .Include(i => i.Company)
             .Include(i => i.SourceFakturoidInvoice)
             .Include(i => i.SourceParsedInvoice)
             .FirstOrDefaultAsync(i => i.Id == invoiceId);
     }
 
-    public async Task<IEnumerable<Invoice>> GetByUserIdAsync(Guid userId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50)
+    public async Task<IEnumerable<Invoice>> GetByCompanyIdAsync(Guid companyId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50)
     {
         var query = _context.Invoices
-            .Where(i => i.UserId == userId);
+            .Where(i => i.CompanyId == companyId);
 
         if (direction.HasValue)
         {
@@ -62,10 +64,10 @@ public class MainInvoiceProvider : IMainInvoiceProvider
             .ToListAsync();
     }
 
-    public async Task<int> GetCountAsync(Guid userId, InvoiceDirection? direction = null)
+    public async Task<int> GetCountAsync(Guid companyId, InvoiceDirection? direction = null)
     {
         var query = _context.Invoices
-            .Where(i => i.UserId == userId);
+            .Where(i => i.CompanyId == companyId);
 
         if (direction.HasValue)
         {
@@ -75,26 +77,26 @@ public class MainInvoiceProvider : IMainInvoiceProvider
         return await query.CountAsync();
     }
 
-    public async Task<int> GetCountForVatMonthAsync(Guid userId, int year, int month)
+    public async Task<int> GetCountForVatMonthAsync(Guid companyId, int year, int month)
     {
         var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
         var endDate = startDate.AddMonths(1);
 
         return await _context.Invoices
-            .Where(i => i.UserId == userId
+            .Where(i => i.CompanyId == companyId
                 && i.TaxableSupplyDate.HasValue
                 && i.TaxableSupplyDate >= startDate
                 && i.TaxableSupplyDate < endDate)
             .CountAsync();
     }
 
-    public async Task<IReadOnlyList<Invoice>> GetVatMonthInvoicesAsync(Guid userId, int year, int month)
+    public async Task<IReadOnlyList<Invoice>> GetVatMonthInvoicesAsync(Guid companyId, int year, int month)
     {
         var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
         var endDate = startDate.AddMonths(1);
 
         return await _context.Invoices
-            .Where(i => i.UserId == userId
+            .Where(i => i.CompanyId == companyId
                 && !i.Cancelled
                 && i.TaxableSupplyDate.HasValue
                 && i.TaxableSupplyDate >= startDate
@@ -104,9 +106,47 @@ public class MainInvoiceProvider : IMainInvoiceProvider
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<Invoice>> GetVatQuarterInvoicesAsync(Guid companyId, int year, int quarter)
+    {
+        if (quarter < 1 || quarter > 4) throw new ArgumentOutOfRangeException(nameof(quarter));
+        var firstMonth = (quarter - 1) * 3 + 1;
+        var startDate = new DateTime(year, firstMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endDate = startDate.AddMonths(3);
+
+        return await _context.Invoices
+            .Where(i => i.CompanyId == companyId
+                && !i.Cancelled
+                && i.TaxableSupplyDate.HasValue
+                && i.TaxableSupplyDate >= startDate
+                && i.TaxableSupplyDate < endDate)
+            .OrderBy(i => i.TaxableSupplyDate)
+            .ThenBy(i => i.Number)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<Invoice>> GetInvoicesMissingRequiredDuzpAsync(Guid companyId, int year)
+    {
+        var startDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endDate = startDate.AddYears(1);
+
+        var candidates = await _context.Invoices
+            .Where(i => i.CompanyId == companyId
+                && !i.Cancelled
+                && !i.TaxableSupplyDate.HasValue
+                && i.IssuedOn.HasValue
+                && i.IssuedOn >= startDate
+                && i.IssuedOn < endDate
+                && (i.Direction == InvoiceDirection.Outbound
+                    || (i.Direction == InvoiceDirection.Inbound && i.SupplierVatNo != null && i.SupplierVatNo != "")))
+            .OrderBy(i => i.IssuedOn)
+            .ThenBy(i => i.Number)
+            .ToListAsync();
+
+        return candidates;
+    }
+
     public async Task<Invoice> CreateAsync(Invoice invoice)
     {
-        // Only set ID if it's not already set (allow pre-generated IDs for related entities)
         if (invoice.Id == Guid.Empty)
         {
             invoice.Id = Guid.NewGuid();

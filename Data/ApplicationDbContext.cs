@@ -12,6 +12,7 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<User> Users { get; set; }
+    public DbSet<Company> Companies { get; set; }
 
     // Main Invoice Tables
     public DbSet<Invoice> Invoices { get; set; }
@@ -94,6 +95,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.IpAddress).HasMaxLength(45);
             entity.Property(e => e.UserAgent).HasMaxLength(500);
             entity.Property(e => e.IsActive).IsRequired();
+            entity.Property(e => e.ActiveCompanyId);
             entity.HasOne(e => e.User)
                 .WithMany(u => u.Sessions)
                 .HasForeignKey(e => e.UserId)
@@ -114,14 +116,27 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.FailureReason).HasMaxLength(500);
         });
 
+        // Company configuration
+        modelBuilder.Entity<Company>(entity =>
+        {
+            entity.ToTable("companies");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.OwnerUserId);
+            entity.HasIndex(e => new { e.OwnerUserId, e.IsActive });
+            entity.HasOne(e => e.Owner)
+                .WithMany()
+                .HasForeignKey(e => e.OwnerUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // FakturoidConnection configuration
         modelBuilder.Entity<FakturoidConnection>(entity =>
         {
             entity.ToTable("fakturoid_connections");
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.HasIndex(e => e.CompanyId).IsUnique();
             entity.HasIndex(e => e.AccountSlug);
-            entity.HasIndex(e => new { e.UserId, e.IsActive });
+            entity.HasIndex(e => new { e.CompanyId, e.IsActive });
             entity.Property(e => e.AccessToken).IsRequired().HasMaxLength(1000);
             entity.Property(e => e.RefreshToken).IsRequired().HasMaxLength(1000);
             entity.Property(e => e.AccountSlug).IsRequired().HasMaxLength(255);
@@ -131,9 +146,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.AccessTokenExpiresAt).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.UpdatedAt).IsRequired();
-            entity.HasOne(e => e.User)
+            entity.HasOne(e => e.Company)
                 .WithMany()
-                .HasForeignKey(e => e.UserId)
+                .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -142,14 +157,14 @@ public class ApplicationDbContext : DbContext
         {
             entity.ToTable("fakturoid_oauth_states");
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.UserId, e.StateHash }).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.StateHash }).IsUnique();
             entity.HasIndex(e => e.ExpiresAt);
             entity.Property(e => e.StateHash).IsRequired().HasMaxLength(255);
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.ExpiresAt).IsRequired();
-            entity.HasOne<User>()
+            entity.HasOne<Company>()
                 .WithMany()
-                .HasForeignKey(e => e.UserId)
+                .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -157,19 +172,32 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Invoice>().HasQueryFilter(i => !i.IsDeleted);
         modelBuilder.Entity<ParsedInvoice>().HasQueryFilter(p => !p.IsDeleted);
 
+        modelBuilder.Entity<Invoice>(entity =>
+        {
+            entity.HasIndex(e => e.CompanyId);
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ParsedInvoice>(entity =>
+        {
+            entity.HasIndex(e => e.CompanyId);
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // Contact configuration
         modelBuilder.Entity<Contact>(entity =>
         {
-            entity.HasIndex(e => e.UserId);
-            entity.HasIndex(e => new { e.UserId, e.Kind });
-            // Partial unique index: at most one OwnCompany contact per user
-            entity.HasIndex(e => e.UserId)
-                .IsUnique()
-                .HasFilter("\"Kind\" = 0")
-                .HasDatabaseName("ix_contacts_owncompany_unique");
-            entity.HasOne(e => e.User)
+            entity.HasIndex(e => e.CompanyId);
+            entity.HasIndex(e => new { e.CompanyId, e.Kind });
+            entity.HasOne(e => e.Company)
                 .WithMany()
-                .HasForeignKey(e => e.UserId)
+                .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

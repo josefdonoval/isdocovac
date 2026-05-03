@@ -10,6 +10,7 @@
 @inject IInvoiceAttachmentProvider AttachmentProvider
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @attribute [Authorize]
 @rendermode InteractiveServer
 
@@ -443,12 +444,9 @@
                 return;
             }
 
-            // Verify user owns the invoice
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = authState.User;
-            var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-            if (!Guid.TryParse(userIdString, out var userId) || currentInvoice.UserId != userId)
+            // Verify the invoice belongs to the active company
+            var activeCompanyId = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+            if (activeCompanyId == null || currentInvoice.CompanyId != activeCompanyId.Value)
             {
                 loadErrorMessage = "You don't have permission to edit this invoice";
                 isLoading = false;

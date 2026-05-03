@@ -42,7 +42,7 @@ public class FakturoidApiServiceTests
         return new FakturoidConnection
         {
             Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
+            CompanyId = Guid.NewGuid(),
             AccessToken = "valid-token",
             RefreshToken = "refresh-token",
             AccessTokenExpiresAt = expiresAt ?? DateTime.UtcNow.AddHours(1),

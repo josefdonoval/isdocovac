@@ -39,6 +39,16 @@ public interface ISessionService
     /// </summary>
     /// <returns>Number of sessions cleaned up</returns>
     Task<int> CleanupExpiredSessionsAsync();
+
+    /// <summary>
+    /// Returns the active company id stored on the session associated with the given session token.
+    /// </summary>
+    Task<Guid?> GetActiveCompanyIdAsync(string sessionToken);
+
+    /// <summary>
+    /// Sets the active company id on the session associated with the given session token.
+    /// </summary>
+    Task SetActiveCompanyAsync(string sessionToken, Guid? companyId);
 }
 
 public class SessionService : ISessionService
@@ -132,5 +142,22 @@ public class SessionService : ISessionService
     public async Task<int> CleanupExpiredSessionsAsync()
     {
         return await _sessionProvider.CleanupExpiredAsync();
+    }
+
+    public async Task<Guid?> GetActiveCompanyIdAsync(string sessionToken)
+    {
+        var tokenHash = TokenHasher.HashToken(sessionToken);
+        var session = await _sessionProvider.GetBySessionTokenHashAsync(tokenHash);
+        return session?.ActiveCompanyId;
+    }
+
+    public async Task SetActiveCompanyAsync(string sessionToken, Guid? companyId)
+    {
+        var tokenHash = TokenHasher.HashToken(sessionToken);
+        var session = await _sessionProvider.GetBySessionTokenHashAsync(tokenHash);
+        if (session != null)
+        {
+            await _sessionProvider.SetActiveCompanyAsync(session.Id, companyId);
+        }
     }
 }

@@ -11,6 +11,7 @@
 @inject IFakturoidOAuthStateProvider OAuthStateProvider
 @inject NavigationManager NavigationManager
 @inject IConfiguration Configuration
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 
 <PageTitle>Connecting to Fakturoid...</PageTitle>
 
@@ -89,7 +90,13 @@
                 return;
             }
 
-            var userId = Guid.Parse(userIdClaim.Value);
+            var companyId = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+            if (companyId == null)
+            {
+                errorMessage = "No active company. Please create or pick a company first.";
+                isProcessing = false;
+                return;
+            }
             if (string.IsNullOrEmpty(state))
             {
                 errorMessage = "Missing OAuth state.";
@@ -98,7 +105,7 @@
             }
 
             var stateHash = TokenHasher.HashToken(state);
-            var isStateValid = await OAuthStateProvider.ValidateAndConsumeAsync(userId, stateHash);
+            var isStateValid = await OAuthStateProvider.ValidateAndConsumeAsync(companyId.Value, stateHash);
             if (!isStateValid)
             {
                 errorMessage = "Invalid OAuth state.";
@@ -117,7 +124,7 @@
             var expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
 
             // Store connection
-            await ConnectionProvider.CreateAsync(userId, accessToken, refreshToken, expiresAt, accountSlug);
+            await ConnectionProvider.CreateAsync(companyId.Value, accessToken, refreshToken, expiresAt, accountSlug);
 
             // Redirect to import page
             NavigationManager.NavigateTo("/fakturoid/staging");

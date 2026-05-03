@@ -7,8 +7,8 @@ namespace Isdocovac.Providers;
 
 public interface IParsedInvoiceProvider
 {
-    Task<ParsedInvoice> CreateUploadAsync(Guid userId, string fileName, long fileSize, string contentType, Stream fileContent);
-    Task<IEnumerable<ParsedInvoice>> GetUserParsedInvoicesAsync(Guid userId, ParsedInvoiceStatus? status = null);
+    Task<ParsedInvoice> CreateUploadAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent);
+    Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null);
     Task<ParsedInvoice?> GetByIdAsync(Guid parsedInvoiceId);
     Task<ParsedInvoice?> GetWithProcessingsAsync(Guid parsedInvoiceId);
     Task UpdateStatusAsync(Guid parsedInvoiceId, ParsedInvoiceStatus status);
@@ -39,11 +39,11 @@ public class ParsedInvoiceProvider : IParsedInvoiceProvider
         _configuration = configuration;
     }
 
-    public async Task<ParsedInvoice> CreateUploadAsync(Guid userId, string fileName, long fileSize, string contentType, Stream fileContent)
+    public async Task<ParsedInvoice> CreateUploadAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent)
     {
         var uploadId = Guid.NewGuid();
         var containerName = _configuration["AzureStorage:InvoiceContainerName"] ?? "invoice-uploads";
-        var blobName = $"{userId}/{uploadId}/{fileName}";
+        var blobName = $"{companyId}/{uploadId}/{fileName}";
 
         // Upload to Azure Blob Storage
         var blobUrl = await _blobStorageProvider.UploadBlobAsync(containerName, blobName, fileContent, contentType);
@@ -51,7 +51,7 @@ public class ParsedInvoiceProvider : IParsedInvoiceProvider
         var parsedInvoice = new ParsedInvoice
         {
             Id = uploadId,
-            UserId = userId,
+            CompanyId = companyId,
             FileName = fileName,
             FileSize = fileSize,
             ContentType = contentType,
@@ -70,10 +70,10 @@ public class ParsedInvoiceProvider : IParsedInvoiceProvider
         return parsedInvoice;
     }
 
-    public async Task<IEnumerable<ParsedInvoice>> GetUserParsedInvoicesAsync(Guid userId, ParsedInvoiceStatus? status = null)
+    public async Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null)
     {
         var query = _context.ParsedInvoices
-            .Where(p => p.UserId == userId);
+            .Where(p => p.CompanyId == companyId);
 
         if (status.HasValue)
         {

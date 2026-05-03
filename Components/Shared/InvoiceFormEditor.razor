@@ -9,6 +9,7 @@
 @inject IContactProvider ContactProvider
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 
 <div class="container mt-4">
     <h1>@Title</h1>
@@ -44,7 +45,7 @@
                     <h5 class="mb-0">@CounterpartyCardTitle <span class="text-danger">*</span></h5>
                 </div>
                 <div class="card-body">
-                    <ContactPicker UserId="_userId"
+                    <ContactPicker CompanyId="_companyId"
                                    Kind="CounterpartyKind"
                                    SelectedContactId="_selectedContactId"
                                    OnContactSelected="OnContactSelected"
@@ -311,10 +312,10 @@
     [Parameter, EditorRequired] public InvoiceDirection Direction { get; set; }
 
     private InvoiceFormModel formModel = new();
-    private Contact? _ownCompany;
+    private Company? _ownCompany;
     private Contact? _selectedContact;
     private Guid? _selectedContactId;
-    private Guid _userId;
+    private Guid _companyId;
     private bool _initialized;
 
     private string? errorMessage;
@@ -340,20 +341,15 @@
     {
         formModel.Direction = Direction;
 
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var userIdString = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out _userId))
+        _ownCompany = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+        if (_ownCompany == null)
         {
-            errorMessage = "Neplatná relace. Přihlaste se znovu.";
+            errorMessage = "Žádná aktivní společnost. Vytvořte prosím společnost.";
             _initialized = true;
             return;
         }
-
-        _ownCompany = await ContactProvider.GetOwnCompanyAsync(_userId);
-        if (_ownCompany != null)
-        {
-            ApplyOwnCompanyToForm();
-        }
+        _companyId = _ownCompany.Id;
+        ApplyOwnCompanyToForm();
 
         AddLineItem();
         UpdateDueDateFromIssueDate();
@@ -433,7 +429,24 @@
         return parts.Count == 0 ? null : string.Join(" ", parts);
     }
 
+    private static string? ComposeStreet(Company c)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(c.Street)) parts.Add(c.Street!);
+        var number = string.Join("/", new[] { c.HouseNumber, c.OrientNumber }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (!string.IsNullOrWhiteSpace(number)) parts.Add(number);
+        return parts.Count == 0 ? null : string.Join(" ", parts);
+    }
+
     private static string FormatAddress(Contact c)
+    {
+        var street = ComposeStreet(c);
+        var tail = string.Join(" ", new[] { c.Zip, c.City }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        return string.Join(", ", new[] { street, tail }.Where(s => !string.IsNullOrWhiteSpace(s))!);
+    }
+
+    private static string FormatAddress(Company c)
     {
         var street = ComposeStreet(c);
         var tail = string.Join(" ", new[] { c.Zip, c.City }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -466,9 +479,9 @@
     {
         try
         {
-            if (_userId != Guid.Empty)
+            if (_companyId != Guid.Empty)
             {
-                formModel.Number = await InvoiceManagementService.GenerateInvoiceNumberAsync(_userId, formModel.TaxableSupplyDate);
+                formModel.Number = await InvoiceManagementService.GenerateInvoiceNumberAsync(_companyId, formModel.TaxableSupplyDate);
                 if (!isVariableSymbolManuallySet) UpdateVariableSymbolFromInvoiceNumber();
             }
         }
@@ -526,7 +539,7 @@
             isSubmitting = true;
             formModel.Direction = Direction;
 
-            var invoice = formModel.ToEntity(_userId);
+            var invoice = formModel.ToEntity(_companyId);
             var created = await InvoiceManagementService.CreateManualInvoiceWithAttachmentAsync(invoice, formModel.PdfFile);
             NavigationManager.NavigateTo($"/invoices/{created.Id}");
         }

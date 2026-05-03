@@ -187,6 +187,7 @@ public class FakturoidApiService : IFakturoidApiService
 
             // Dates
             IssuedOn = api.issued_on,
+            TaxableSupplyDate = api.taxable_fulfillment_due,
             SentAt = api.sent_at,
             PaidOn = api.paid_on,
             DueOn = api.due_on,
@@ -319,6 +320,7 @@ public class FakturoidApiService : IFakturoidApiService
         public bool cancelled { get; set; }
         public bool uncollectible { get; set; }
         public DateTime? issued_on { get; set; }
+        public DateTime? taxable_fulfillment_due { get; set; }
         public DateTime? sent_at { get; set; }
         public DateTime? paid_on { get; set; }
         public DateTime? due_on { get; set; }

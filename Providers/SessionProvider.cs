@@ -10,6 +10,7 @@ public interface ISessionProvider
     Task<UserSession?> GetBySessionTokenHashAsync(string sessionTokenHash);
     Task<IEnumerable<UserSession>> GetActiveSessionsByUserAsync(Guid userId);
     Task<UserSession> UpdateLastActivityAsync(Guid sessionId);
+    Task SetActiveCompanyAsync(Guid sessionId, Guid? companyId);
     Task RevokeAsync(Guid sessionId);
     Task RevokeAllByUserAsync(Guid userId);
     Task<int> CleanupExpiredAsync();
@@ -76,6 +77,17 @@ public class SessionProvider : ISessionProvider
         await context.SaveChangesAsync();
 
         return session;
+    }
+
+    public async Task SetActiveCompanyAsync(Guid sessionId, Guid? companyId)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        var session = await context.UserSessions.FindAsync(sessionId);
+        if (session != null)
+        {
+            session.ActiveCompanyId = companyId;
+            await context.SaveChangesAsync();
+        }
     }
 
     public async Task RevokeAsync(Guid sessionId)

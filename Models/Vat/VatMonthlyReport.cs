@@ -12,7 +12,9 @@ public class VatMonthlyReport
 {
     public required int Year { get; init; }
     public required int Month { get; init; }
-    public required Contact OwnCompany { get; init; }
+    public int? Quarter { get; init; }
+    public required Company OwnCompany { get; init; }
+    public bool IsQuarterly => Quarter.HasValue;
 
     // KH rows
     public List<KhA2Row> A2Rows { get; } = new();

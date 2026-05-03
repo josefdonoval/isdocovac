@@ -12,6 +12,7 @@
 @inject IContactProvider ContactProvider
 @inject IAresLookupService AresLookup
 @inject NavigationManager NavigationManager
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @rendermode InteractiveServer
 
 <PageTitle>@(IsNew ? "Nový kontakt" : "Upravit kontakt")</PageTitle>
@@ -180,7 +181,7 @@
     };
 
     private ContactFormModel? model;
-    private Guid userId;
+    private Guid companyId;
     private bool saving;
     private bool statusSuccess;
     private string? statusMessage;
@@ -193,18 +194,18 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateTask!;
-        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-        if (claim == null || !Guid.TryParse(claim.Value, out userId))
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
         {
-            NavigationManager.NavigateTo("/auth/login");
+            NavigationManager.NavigateTo("/companies/new", forceLoad: true);
             return;
         }
+        companyId = active.Value;
 
         if (Id is Guid id)
         {
             var existing = await ContactProvider.GetByIdAsync(id);
-            if (existing == null || existing.UserId != userId || existing.Kind == ContactKind.OwnCompany)
+            if (existing == null || existing.CompanyId != companyId)
             {
                 NavigationManager.NavigateTo("/contacts");
                 return;
@@ -286,7 +287,7 @@
         statusMessage = null;
         try
         {
-            var entity = model!.ToEntity(userId, Id);
+            var entity = model!.ToEntity(companyId, Id);
             if (IsNew)
             {
                 var created = await ContactProvider.AddAsync(entity);
@@ -361,11 +362,11 @@
             Phone = c.Phone,
         };
 
-        public Contact ToEntity(Guid userId, Guid? id) => new()
+        public Contact ToEntity(Guid companyId, Guid? id) => new()
         {
             Id = id ?? Guid.Empty,
-            UserId = userId,
-            Kind = Kind == ContactKind.OwnCompany ? ContactKind.Client : Kind,
+            CompanyId = companyId,
+            Kind = Kind,
             IsLegalEntity = IsLegalEntity,
             CompanyName = IsLegalEntity ? CompanyName : null,
             FirstName = IsLegalEntity ? null : FirstName,

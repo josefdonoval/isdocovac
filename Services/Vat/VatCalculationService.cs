@@ -9,9 +9,16 @@ public interface IVatCalculationService
 {
     Task<VatMonthlyReport> BuildAsync(
         IEnumerable<Invoice> invoices,
-        Contact ownCompany,
+        Company ownCompany,
         int year,
         int month,
+        CancellationToken ct = default);
+
+    Task<VatMonthlyReport> BuildQuarterAsync(
+        IEnumerable<Invoice> invoices,
+        Company ownCompany,
+        int year,
+        int quarter,
         CancellationToken ct = default);
 }
 
@@ -28,18 +35,40 @@ public class VatCalculationService : IVatCalculationService
         _fx = fx;
     }
 
-    public async Task<VatMonthlyReport> BuildAsync(
+    public Task<VatMonthlyReport> BuildAsync(
         IEnumerable<Invoice> invoices,
-        Contact ownCompany,
+        Company ownCompany,
         int year,
         int month,
         CancellationToken ct = default)
+        => BuildInternalAsync(invoices, ownCompany, year, month, quarter: null, ct);
+
+    public Task<VatMonthlyReport> BuildQuarterAsync(
+        IEnumerable<Invoice> invoices,
+        Company ownCompany,
+        int year,
+        int quarter,
+        CancellationToken ct = default)
+    {
+        if (quarter < 1 || quarter > 4) throw new ArgumentOutOfRangeException(nameof(quarter));
+        var firstMonth = (quarter - 1) * 3 + 1;
+        return BuildInternalAsync(invoices, ownCompany, year, firstMonth, quarter, ct);
+    }
+
+    private async Task<VatMonthlyReport> BuildInternalAsync(
+        IEnumerable<Invoice> invoices,
+        Company ownCompany,
+        int year,
+        int month,
+        int? quarter,
+        CancellationToken ct)
     {
         var errors = new List<string>();
         var report = new VatMonthlyReport
         {
             Year = year,
             Month = month,
+            Quarter = quarter,
             OwnCompany = ownCompany,
         };
 

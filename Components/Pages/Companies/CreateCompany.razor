@@ -1,0 +1,107 @@
+@page "/companies/new"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authorization
+@inject ICompanyProvider CompanyProvider
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject NavigationManager NavigationManager
+
+<PageTitle>Create company - Isdocovac</PageTitle>
+
+<div class="container py-4" style="max-width: 720px;">
+    <h1>Create company</h1>
+    <p class="text-muted">Set up the company whose invoices, contacts and VAT reports you'll manage.</p>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+
+    <EditForm Model="model" OnValidSubmit="SaveAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger" />
+
+        <div class="mb-3">
+            <label class="form-label">Display name *</label>
+            <InputText class="form-control" @bind-Value="model.Name" />
+            <div class="form-text">Shown in the company switcher.</div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">IČO</label>
+                <InputText class="form-control" @bind-Value="model.Ico" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">DIČ</label>
+                <InputText class="form-control" @bind-Value="model.Dic" />
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary" disabled="@saving">
+                @(saving ? "Saving…" : "Create company")
+            </button>
+            <a href="/companies" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </EditForm>
+
+    <p class="text-muted small mt-4">You can fill in the rest of the VAT-payer details later in the Company Profile page.</p>
+</div>
+
+@code {
+    private Model model = new();
+    private bool saving;
+    private string? errorMessage;
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        errorMessage = null;
+        try
+        {
+            var userId = await CurrentCompanyAccessor.GetCurrentUserIdAsync();
+            if (userId == null)
+            {
+                NavigationManager.NavigateTo("/auth/login", forceLoad: true);
+                return;
+            }
+
+            var company = new Company
+            {
+                OwnerUserId = userId.Value,
+                Name = model.Name,
+                CompanyName = model.Name,
+                IsLegalEntity = true,
+                Ico = model.Ico,
+                Dic = model.Dic,
+                CountryCode = "CZ",
+                VatPeriod = VatPeriod.Monthly,
+            };
+
+            var created = await CompanyProvider.CreateAsync(company);
+            await CurrentCompanyAccessor.SetActiveCompanyAsync(created.Id);
+            NavigationManager.NavigateTo("/vat/company", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private class Model
+    {
+        [Required] public string Name { get; set; } = string.Empty;
+        public string? Ico { get; set; }
+        public string? Dic { get; set; }
+    }
+}

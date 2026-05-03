@@ -7,8 +7,8 @@ namespace Isdocovac.Services;
 
 public interface IParsedInvoiceService
 {
-    Task<ParsedInvoice> UploadIsdocAsync(Guid userId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null);
-    Task<IEnumerable<ParsedInvoice>> GetUserParsedInvoicesAsync(Guid userId, ParsedInvoiceStatus? status = null);
+    Task<ParsedInvoice> UploadIsdocAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null);
+    Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null);
     Task<ParsedInvoice?> GetParsedInvoiceWithProcessingsAsync(Guid parsedInvoiceId);
     Task<ParsedInvoiceProcessing> StartParsingAsync(Guid parsedInvoiceId);
     Task UpdateParsedDataAsync(Guid parsedInvoiceId, ParsedInvoice updatedData);
@@ -39,9 +39,9 @@ public class ParsedInvoiceService : IParsedInvoiceService
         _isdocXmlParsingService = isdocXmlParsingService;
     }
 
-    public async Task<ParsedInvoice> UploadIsdocAsync(Guid userId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null)
+    public async Task<ParsedInvoice> UploadIsdocAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null)
     {
-        var parsedInvoice = await _parsedInvoiceProvider.CreateUploadAsync(userId, fileName, fileSize, contentType, fileContent);
+        var parsedInvoice = await _parsedInvoiceProvider.CreateUploadAsync(companyId, fileName, fileSize, contentType, fileContent);
 
         // Detect file type
         var isPdf = contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase) ||
@@ -93,9 +93,9 @@ public class ParsedInvoiceService : IParsedInvoiceService
         return parsedInvoice;
     }
 
-    public async Task<IEnumerable<ParsedInvoice>> GetUserParsedInvoicesAsync(Guid userId, ParsedInvoiceStatus? status = null)
+    public async Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null)
     {
-        return await _parsedInvoiceProvider.GetUserParsedInvoicesAsync(userId, status);
+        return await _parsedInvoiceProvider.GetCompanyParsedInvoicesAsync(companyId, status);
     }
 
     public async Task<ParsedInvoice?> GetParsedInvoiceWithProcessingsAsync(Guid parsedInvoiceId)

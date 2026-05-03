@@ -24,7 +24,7 @@
 </div>
 
 @code {
-    [Parameter, EditorRequired] public Guid UserId { get; set; }
+    [Parameter, EditorRequired] public Guid CompanyId { get; set; }
     [Parameter, EditorRequired] public ContactKind Kind { get; set; }
     [Parameter] public Guid? SelectedContactId { get; set; }
     [Parameter] public EventCallback<Contact?> OnContactSelected { get; set; }
@@ -36,14 +36,14 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (UserId == Guid.Empty)
+        if (CompanyId == Guid.Empty)
         {
             _contacts = new();
             return;
         }
 
-        var primary = await ContactProvider.GetByKindAsync(UserId, Kind);
-        var both = await ContactProvider.GetByKindAsync(UserId, ContactKind.Both);
+        var primary = await ContactProvider.GetByKindAsync(CompanyId, Kind);
+        var both = await ContactProvider.GetByKindAsync(CompanyId, ContactKind.Both);
         _contacts = primary.Concat(both)
             .Where(c => c.IsActive)
             .OrderBy(c => c.CompanyName ?? ((c.LastName ?? "") + " " + (c.FirstName ?? "")).Trim())

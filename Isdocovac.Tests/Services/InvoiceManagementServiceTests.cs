@@ -43,7 +43,7 @@ public class InvoiceManagementServiceTests
         return new Invoice
         {
             Id = Guid.NewGuid(),
-            UserId = userId ?? Guid.NewGuid(),
+            CompanyId = userId ?? Guid.NewGuid(),
             Direction = InvoiceDirection.Inbound,
             Number = "202603010001"
         };
@@ -64,19 +64,19 @@ public class InvoiceManagementServiceTests
     }
 
     [Fact]
-    public async Task GetUserInvoicesAsync_DelegatesToProvider()
+    public async Task GetCompanyInvoicesAsync_DelegatesToProvider()
     {
         var userId = Guid.NewGuid();
         var expectedInvoices = new List<Invoice> { CreateTestInvoice(userId) };
 
         _mainInvoiceProviderMock
-            .Setup(x => x.GetByUserIdAsync(userId, null, 1, 20))
+            .Setup(x => x.GetByCompanyIdAsync(userId, null, 1, 20))
             .ReturnsAsync(expectedInvoices);
 
-        var result = await _sut.GetUserInvoicesAsync(userId, null, 1, 20);
+        var result = await _sut.GetCompanyInvoicesAsync(userId, null, 1, 20);
 
         result.Should().BeEquivalentTo(expectedInvoices);
-        _mainInvoiceProviderMock.Verify(x => x.GetByUserIdAsync(userId, null, 1, 20), Times.Once);
+        _mainInvoiceProviderMock.Verify(x => x.GetByCompanyIdAsync(userId, null, 1, 20), Times.Once);
     }
 
     [Fact]

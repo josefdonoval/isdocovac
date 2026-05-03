@@ -47,7 +47,7 @@ public class PdfInvoiceProcessingServiceTests
         return new ParsedInvoice
         {
             Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
+            CompanyId = Guid.NewGuid(),
             FileName = "test-invoice.pdf",
             BlobContainerName = "test-container",
             BlobName = "test-blob",

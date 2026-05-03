@@ -17,8 +17,14 @@ using Isdocovac.Services.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// All Serilog configuration is driven from the "Serilog" section in appsettings.json.
+builder.Host.UseSerilog((context, services, loggerConfig) => loggerConfig
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services));
 
 // Add custom cookie-based authentication
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -107,6 +113,10 @@ builder.Services.AddScoped<IInvoiceImportService, InvoiceImportService>();
 builder.Services.AddScoped<IInvoiceManagementService, InvoiceManagementService>();
 builder.Services.AddScoped<IParsedInvoiceService, ParsedInvoiceService>();
 
+// Companies + multi-company support
+builder.Services.AddScoped<ICompanyProvider, CompanyProvider>();
+builder.Services.AddScoped<ICurrentCompanyAccessor, CurrentCompanyAccessor>();
+
 // Contacts + VAT reporting
 builder.Services.AddScoped<IContactProvider, ContactProvider>();
 builder.Services.AddScoped<IFxRateProvider, FxRateProvider>();
@@ -140,4 +150,11 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+try
+{
+    app.Run();
+}
+finally
+{
+    Log.CloseAndFlush();
+}

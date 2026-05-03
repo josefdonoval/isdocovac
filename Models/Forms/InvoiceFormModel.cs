@@ -174,7 +174,7 @@ public class InvoiceFormModel
     /// <summary>
     /// Converts this form model to an Invoice entity
     /// </summary>
-    public Invoice ToEntity(Guid userId)
+    public Invoice ToEntity(Guid companyId)
     {
         RecalculateTotals();
 
@@ -184,7 +184,7 @@ public class InvoiceFormModel
         var invoice = new Invoice
         {
             Id = invoiceId,
-            UserId = userId,
+            CompanyId = companyId,
             Direction = Direction,
             Source = InvoiceSource.Manual, // Will be set by service, but set here for completeness
             Number = Number,

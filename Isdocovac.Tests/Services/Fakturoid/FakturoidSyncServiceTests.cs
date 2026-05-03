@@ -28,7 +28,7 @@ public class FakturoidSyncServiceTests
         return new FakturoidConnection
         {
             Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
+            CompanyId = Guid.NewGuid(),
             AccessToken = "valid-token",
             RefreshToken = "refresh-token",
             AccessTokenExpiresAt = DateTime.UtcNow.AddHours(1),
@@ -54,7 +54,7 @@ public class FakturoidSyncServiceTests
     public async Task SyncInvoicesAsync_ThrowsWhenNoConnection()
     {
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(It.IsAny<Guid>()))
+            .Setup(x => x.GetByCompanyIdAsync(It.IsAny<Guid>()))
             .ReturnsAsync((FakturoidConnection?)null);
 
         var service = CreateService();
@@ -75,7 +75,7 @@ public class FakturoidSyncServiceTests
         };
 
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(connection.UserId))
+            .Setup(x => x.GetByCompanyIdAsync(connection.CompanyId))
             .ReturnsAsync(connection);
 
         _apiServiceMock
@@ -89,7 +89,7 @@ public class FakturoidSyncServiceTests
 
         var service = CreateService();
 
-        var count = await service.SyncInvoicesAsync(connection.UserId);
+        var count = await service.SyncInvoicesAsync(connection.CompanyId);
 
         count.Should().Be(2);
         _invoiceProviderMock.Verify(
@@ -113,7 +113,7 @@ public class FakturoidSyncServiceTests
             .ToList();
 
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(connection.UserId))
+            .Setup(x => x.GetByCompanyIdAsync(connection.CompanyId))
             .ReturnsAsync(connection);
 
         _apiServiceMock
@@ -128,7 +128,7 @@ public class FakturoidSyncServiceTests
 
         var service = CreateService();
 
-        var count = await service.SyncInvoicesAsync(connection.UserId);
+        var count = await service.SyncInvoicesAsync(connection.CompanyId);
 
         count.Should().Be(45);
     }
@@ -140,7 +140,7 @@ public class FakturoidSyncServiceTests
         var connection = CreateConnection(lastSyncedAt: lastSynced);
 
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(connection.UserId))
+            .Setup(x => x.GetByCompanyIdAsync(connection.CompanyId))
             .ReturnsAsync(connection);
 
         _apiServiceMock
@@ -150,7 +150,7 @@ public class FakturoidSyncServiceTests
 
         var service = CreateService();
 
-        await service.SyncInvoicesAsync(connection.UserId);
+        await service.SyncInvoicesAsync(connection.CompanyId);
 
         _apiServiceMock.Verify(
             x => x.FetchInvoicesAsync(connection.Id, It.IsAny<int>(), lastSynced),
@@ -164,7 +164,7 @@ public class FakturoidSyncServiceTests
         var connection = CreateConnection(lastSyncedAt: lastSynced);
 
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(connection.UserId))
+            .Setup(x => x.GetByCompanyIdAsync(connection.CompanyId))
             .ReturnsAsync(connection);
 
         _apiServiceMock
@@ -174,7 +174,7 @@ public class FakturoidSyncServiceTests
 
         var service = CreateService();
 
-        await service.SyncInvoicesAsync(connection.UserId, fullSync: true);
+        await service.SyncInvoicesAsync(connection.CompanyId, fullSync: true);
 
         _apiServiceMock.Verify(
             x => x.FetchInvoicesAsync(connection.Id, It.IsAny<int>(), null),
@@ -187,7 +187,7 @@ public class FakturoidSyncServiceTests
         var connection = CreateConnection();
 
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(connection.UserId))
+            .Setup(x => x.GetByCompanyIdAsync(connection.CompanyId))
             .ReturnsAsync(connection);
 
         _apiServiceMock
@@ -197,7 +197,7 @@ public class FakturoidSyncServiceTests
 
         var service = CreateService();
 
-        await service.SyncInvoicesAsync(connection.UserId);
+        await service.SyncInvoicesAsync(connection.CompanyId);
 
         _connectionProviderMock.Verify(
             x => x.UpdateLastSyncedAsync(connection.Id),
@@ -208,7 +208,7 @@ public class FakturoidSyncServiceTests
     public async Task GetSyncStatusAsync_ReturnsEmptyWhenNoConnection()
     {
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(It.IsAny<Guid>()))
+            .Setup(x => x.GetByCompanyIdAsync(It.IsAny<Guid>()))
             .ReturnsAsync((FakturoidConnection?)null);
 
         var service = CreateService();
@@ -226,7 +226,7 @@ public class FakturoidSyncServiceTests
         var connection = CreateConnection(lastSyncedAt: lastSynced);
 
         _connectionProviderMock
-            .Setup(x => x.GetByUserIdAsync(connection.UserId))
+            .Setup(x => x.GetByCompanyIdAsync(connection.CompanyId))
             .ReturnsAsync(connection);
 
         _invoiceProviderMock
@@ -235,7 +235,7 @@ public class FakturoidSyncServiceTests
 
         var service = CreateService();
 
-        var result = await service.GetSyncStatusAsync(connection.UserId);
+        var result = await service.GetSyncStatusAsync(connection.CompanyId);
 
         result.TotalInvoices.Should().Be(42);
         result.LastSyncedAt.Should().Be(lastSynced);

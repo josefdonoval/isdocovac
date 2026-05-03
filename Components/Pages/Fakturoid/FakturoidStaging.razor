@@ -15,6 +15,7 @@
 @inject IInvoiceImportService InvoiceImportService
 @inject NavigationManager NavigationManager
 @inject IConfiguration Configuration
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 
 <PageTitle>Fakturoid Import - Isdocovac</PageTitle>
 
@@ -224,7 +225,7 @@
     private bool isSyncing = false;
     private bool showImportedOnly = false;
     private string? statusMessage;
-    private Guid userId;
+    private Guid companyId;
     private FakturoidConnection? connection;
     private List<FakturoidInvoice>? invoices;
     private SyncResult? syncStatus;
@@ -235,16 +236,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await authenticationStateTask!;
-        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-
-        if (userIdClaim == null)
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
         {
-            NavigationManager.NavigateTo("/auth/login");
+            NavigationManager.NavigateTo("/companies/new", forceLoad: true);
             return;
         }
-
-        userId = Guid.Parse(userIdClaim.Value);
+        companyId = active.Value;
         await LoadData();
     }
 
@@ -252,12 +250,12 @@
     {
         isLoading = true;
 
-        connection = await ConnectionProvider.GetByUserIdAsync(userId);
+        connection = await ConnectionProvider.GetByCompanyIdAsync(companyId);
         isConnected = connection != null && connection.IsActive;
 
         if (isConnected)
         {
-            syncStatus = await SyncService.GetSyncStatusAsync(userId);
+            syncStatus = await SyncService.GetSyncStatusAsync(companyId);
             await LoadPage(currentPage);
 
             if (syncStatus != null)
@@ -301,7 +299,7 @@
         var state = SecureTokenGenerator.GenerateToken(16);
         var stateHash = TokenHasher.HashToken(state);
         var expiresAt = DateTime.UtcNow.AddMinutes(10);
-        await OAuthStateProvider.StoreAsync(userId, stateHash, expiresAt);
+        await OAuthStateProvider.StoreAsync(companyId, stateHash, expiresAt);
         var authUrl = OAuthService.GetAuthorizationUrl(state);
         NavigationManager.NavigateTo(authUrl, forceLoad: true);
     }
@@ -314,7 +312,7 @@
 
         try
         {
-            var syncedCount = await SyncService.SyncInvoicesAsync(userId, fullSync: false);
+            var syncedCount = await SyncService.SyncInvoicesAsync(companyId, fullSync: false);
             statusMessage = $"Successfully synced {syncedCount} invoice(s).";
             await LoadData();
         }
@@ -334,7 +332,7 @@
 
         try
         {
-            var invoice = await InvoiceImportService.ImportFromFakturoidAsync(fakturoidInvoiceId, userId);
+            var invoice = await InvoiceImportService.ImportFromFakturoidAsync(fakturoidInvoiceId, companyId);
             statusMessage = $"Successfully imported invoice {invoice.Number}";
             await LoadPage(currentPage);
         }

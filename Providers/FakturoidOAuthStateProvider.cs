@@ -6,8 +6,8 @@ namespace Isdocovac.Providers;
 
 public interface IFakturoidOAuthStateProvider
 {
-    Task StoreAsync(Guid userId, string stateHash, DateTime expiresAt);
-    Task<bool> ValidateAndConsumeAsync(Guid userId, string stateHash);
+    Task StoreAsync(Guid companyId, string stateHash, DateTime expiresAt);
+    Task<bool> ValidateAndConsumeAsync(Guid companyId, string stateHash);
 }
 
 public class FakturoidOAuthStateProvider : IFakturoidOAuthStateProvider
@@ -19,11 +19,11 @@ public class FakturoidOAuthStateProvider : IFakturoidOAuthStateProvider
         _contextFactory = contextFactory;
     }
 
-    public async Task StoreAsync(Guid userId, string stateHash, DateTime expiresAt)
+    public async Task StoreAsync(Guid companyId, string stateHash, DateTime expiresAt)
     {
         await using var context = _contextFactory.CreateDbContext();
         var existingStates = await context.FakturoidOAuthStates
-            .Where(state => state.UserId == userId)
+            .Where(state => state.CompanyId == companyId)
             .ToListAsync();
 
         if (existingStates.Count > 0)
@@ -34,7 +34,7 @@ public class FakturoidOAuthStateProvider : IFakturoidOAuthStateProvider
         var state = new FakturoidOAuthState
         {
             Id = Guid.NewGuid(),
-            UserId = userId,
+            CompanyId = companyId,
             StateHash = stateHash,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = expiresAt
@@ -44,11 +44,11 @@ public class FakturoidOAuthStateProvider : IFakturoidOAuthStateProvider
         await context.SaveChangesAsync();
     }
 
-    public async Task<bool> ValidateAndConsumeAsync(Guid userId, string stateHash)
+    public async Task<bool> ValidateAndConsumeAsync(Guid companyId, string stateHash)
     {
         await using var context = _contextFactory.CreateDbContext();
         var state = await context.FakturoidOAuthStates
-            .FirstOrDefaultAsync(item => item.UserId == userId && item.StateHash == stateHash);
+            .FirstOrDefaultAsync(item => item.CompanyId == companyId && item.StateHash == stateHash);
 
         if (state == null)
         {

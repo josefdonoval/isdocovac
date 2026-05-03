@@ -8,6 +8,7 @@
 @inject ISessionService SessionService
 @inject NavigationManager NavigationManager
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Isdocovac.Providers.ICompanyProvider CompanyProvider
 
 <PageTitle>Logging In - Isdocovac</PageTitle>
 
@@ -104,8 +105,10 @@
                     authProperties);
             }
 
-            // Redirect to home page with force load to ensure authentication is picked up
-            NavigationManager.NavigateTo("/", forceLoad: true);
+            // If the user has no company yet, send them to onboarding.
+            var companies = await CompanyProvider.ListByOwnerAsync(user.Id);
+            var redirect = companies.Count == 0 ? "/companies/new" : "/";
+            NavigationManager.NavigateTo(redirect, forceLoad: true);
         }
         catch (Exception ex)
         {

@@ -4,8 +4,8 @@ namespace Isdocovac.Services.Fakturoid;
 
 public interface IFakturoidSyncService
 {
-    Task<int> SyncInvoicesAsync(Guid userId, bool fullSync = false);
-    Task<SyncResult> GetSyncStatusAsync(Guid userId);
+    Task<int> SyncInvoicesAsync(Guid companyId, bool fullSync = false);
+    Task<SyncResult> GetSyncStatusAsync(Guid companyId);
 }
 
 public class SyncResult
@@ -35,11 +35,11 @@ public class FakturoidSyncService : IFakturoidSyncService
         _logger = logger;
     }
 
-    public async Task<int> SyncInvoicesAsync(Guid userId, bool fullSync = false)
+    public async Task<int> SyncInvoicesAsync(Guid companyId, bool fullSync = false)
     {
-        var connection = await _connectionProvider.GetByUserIdAsync(userId);
+        var connection = await _connectionProvider.GetByCompanyIdAsync(companyId);
         if (connection == null)
-            throw new InvalidOperationException("No Fakturoid connection found for user");
+            throw new InvalidOperationException("No Fakturoid connection found for company");
 
         var updatedSince = fullSync ? null : connection.LastSyncedAt;
         var totalSynced = 0;
@@ -58,7 +58,6 @@ public class FakturoidSyncService : IFakturoidSyncService
                 totalSynced++;
             }
 
-            // Fakturoid returns 40 invoices per page
             if (invoices.Count < 40)
                 break;
 
@@ -67,14 +66,14 @@ public class FakturoidSyncService : IFakturoidSyncService
 
         await _connectionProvider.UpdateLastSyncedAsync(connection.Id);
 
-        _logger.LogInformation("Synced {Count} invoices for user {UserId}", totalSynced, userId);
+        _logger.LogInformation("Synced {Count} invoices for company {CompanyId}", totalSynced, companyId);
 
         return totalSynced;
     }
 
-    public async Task<SyncResult> GetSyncStatusAsync(Guid userId)
+    public async Task<SyncResult> GetSyncStatusAsync(Guid companyId)
     {
-        var connection = await _connectionProvider.GetByUserIdAsync(userId);
+        var connection = await _connectionProvider.GetByCompanyIdAsync(companyId);
         if (connection == null)
             return new SyncResult { TotalInvoices = 0 };
 

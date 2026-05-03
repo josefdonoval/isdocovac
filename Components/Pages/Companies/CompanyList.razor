@@ -1,0 +1,101 @@
+@page "/companies"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using Isdocovac.Models
+@using Isdocovac.Providers
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authorization
+@inject ICompanyProvider CompanyProvider
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject NavigationManager NavigationManager
+
+<PageTitle>Companies - Isdocovac</PageTitle>
+
+<div class="container py-4" style="max-width: 1000px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0">Companies</h1>
+        <a class="btn btn-primary" href="/companies/new">+ New company</a>
+    </div>
+
+    @if (companies == null)
+    {
+        <p class="text-muted">Loading…</p>
+    }
+    else if (companies.Count == 0)
+    {
+        <div class="alert alert-info">
+            You don't have any companies yet. <a href="/companies/new" class="alert-link">Create one</a> to start.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Name</th>
+                        <th>IČO</th>
+                        <th>DIČ</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in companies)
+                    {
+                        <tr class="@(c.Id == activeId ? "table-active" : "")">
+                            <td>
+                                @if (c.Id == activeId)
+                                {
+                                    <span class="badge text-bg-primary">Active</span>
+                                }
+                            </td>
+                            <td><strong>@c.Name</strong></td>
+                            <td>@c.Ico</td>
+                            <td>@c.Dic</td>
+                            <td class="text-end">
+                                @if (c.Id != activeId)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => Activate(c.Id)">Switch to</button>
+                                }
+                                <a class="btn btn-sm btn-outline-secondary me-2" href="/vat/company">Edit</a>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c.Id)" disabled="@(c.Id == activeId)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Company>? companies;
+    private Guid? activeId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var userId = await CurrentCompanyAccessor.GetCurrentUserIdAsync();
+        if (userId == null) { NavigationManager.NavigateTo("/auth/login", forceLoad: true); return; }
+        companies = (await CompanyProvider.ListByOwnerAsync(userId.Value)).ToList();
+        activeId = (await CurrentCompanyAccessor.GetActiveCompanyAsync())?.Id;
+    }
+
+    private async Task Activate(Guid id)
+    {
+        await CurrentCompanyAccessor.SetActiveCompanyAsync(id);
+        NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        if (id == activeId) return;
+        await CompanyProvider.SoftDeleteAsync(id);
+        await LoadAsync();
+    }
+}

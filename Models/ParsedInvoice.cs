@@ -12,7 +12,7 @@ public class ParsedInvoice
     public Guid Id { get; set; }
 
     [Required]
-    public Guid UserId { get; set; }
+    public Guid CompanyId { get; set; }
 
     // Original Upload Information (from InvoiceUpload)
     [Required]
@@ -205,8 +205,8 @@ public class ParsedInvoice
     public DateTime UpdatedAt { get; set; }
 
     // Navigation properties
-    [ForeignKey(nameof(UserId))]
-    public User User { get; set; } = null!;
+    [ForeignKey(nameof(CompanyId))]
+    public Company Company { get; set; } = null!;
 
     [ForeignKey(nameof(ImportedInvoiceId))]
     public Invoice? ImportedInvoice { get; set; }

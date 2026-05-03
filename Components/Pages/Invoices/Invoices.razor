@@ -7,6 +7,7 @@
 @attribute [Authorize]
 @inject IInvoiceManagementService InvoiceManagementService
 @inject NavigationManager NavigationManager
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @rendermode InteractiveServer
 
 <PageTitle>Invoices</PageTitle>
@@ -95,7 +96,7 @@
                             {
                                 <tr>
                                     <td>
-                                        <strong>@invoice.Number</strong>
+                                        <a href="/invoices/@invoice.Id"><strong>@invoice.Number</strong></a>
                                         @if (!string.IsNullOrEmpty(invoice.CustomId))
                                         {
                                             <br><small class="text-muted">@invoice.CustomId</small>
@@ -255,17 +256,15 @@
             isLoading = true;
             errorMessage = null;
 
-            var authState = await AuthenticationStateTask!;
-            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-
-            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+            var companyId = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+            if (companyId == null)
             {
-                errorMessage = "User not authenticated";
+                NavigationManager.NavigateTo("/companies/new", forceLoad: true);
                 return;
             }
 
-            invoices = (await InvoiceManagementService.GetUserInvoicesAsync(userId, selectedDirection, currentPage, pageSize)).ToList();
-            totalInvoices = await InvoiceManagementService.GetUserInvoiceCountAsync(userId, selectedDirection);
+            invoices = (await InvoiceManagementService.GetCompanyInvoicesAsync(companyId.Value, selectedDirection, currentPage, pageSize)).ToList();
+            totalInvoices = await InvoiceManagementService.GetCompanyInvoiceCountAsync(companyId.Value, selectedDirection);
             totalPages = (int)Math.Ceiling((double)totalInvoices / pageSize);
         }
         catch (Exception ex)

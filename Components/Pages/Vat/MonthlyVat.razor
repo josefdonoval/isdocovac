@@ -1,5 +1,7 @@
 @page "/vat/monthly"
 @using System.Security.Claims
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
 @using Isdocovac.Models.Vat
 @using Isdocovac.Providers
 @using Isdocovac.Services.Vat
@@ -7,7 +9,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @attribute [Authorize]
-@inject IContactProvider ContactProvider
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @inject IMainInvoiceProvider InvoiceProvider
 @inject IVatCalculationService VatCalculationService
 @inject IDphXmlGeneratorService DphGenerator
@@ -16,13 +18,17 @@
 @inject IJSRuntime JS
 @rendermode InteractiveServer
 
-<PageTitle>Monthly VAT</PageTitle>
+<PageTitle>DPH</PageTitle>
 
 <div class="container py-4" style="max-width: 1100px;">
     <div class="d-flex align-items-center gap-2 mb-4">
         <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => ChangeYear(-1)" disabled="@busy">‹</button>
         <div class="border rounded px-3 py-1 fw-semibold">@year</div>
         <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => ChangeYear(1)" disabled="@busy">›</button>
+        <span class="ms-3 small text-muted">
+            Zdaňovací období: <strong>@(vatPeriod == VatPeriod.Quarterly ? "Čtvrtletní" : "Měsíční")</strong>
+            <a class="ms-2" href="/vat/company?returnUrl=/vat/monthly">změnit</a>
+        </span>
     </div>
 
     @if (!string.IsNullOrEmpty(infoMessage))
@@ -42,33 +48,78 @@
         </div>
     }
 
-    @for (var q = 1; q <= 4; q++)
+    @if (missingDuzp.Count > 0)
     {
-        var quarter = q;
-        <h3 class="mt-4">@quarter. čtvrtletí @year</h3>
+        <div class="alert alert-warning">
+            <strong>Chybí DUZP (@missingDuzp.Count):</strong>
+            <ul class="mb-0">
+                @foreach (var inv in missingDuzp)
+                {
+                    <li>
+                        @(inv.Direction == InvoiceDirection.Outbound ? "Vydaná" : "Přijatá")
+                        <a href="/invoices/@inv.Id">@inv.Number</a> — @(inv.IssuedOn?.ToString("yyyy-MM-dd") ?? "?")
+                        @if (inv.Direction == InvoiceDirection.Inbound && !string.IsNullOrWhiteSpace(inv.SupplierVatNo))
+                        {
+                            <span> (dodavatel plátce DPH: @inv.SupplierVatNo)</span>
+                        }
+                    </li>
+                }
+            </ul>
+            <div class="small mt-1">Tyto faktury vyžadují DUZP a nezapočítají se do DPH dokud nebude vyplněna.</div>
+        </div>
+    }
+
+    @if (vatPeriod == VatPeriod.Quarterly)
+    {
         <div class="list-group mb-3">
-            @for (var mi = 0; mi < 3; mi++)
+            @for (var q = 1; q <= 4; q++)
             {
-                var m = (quarter - 1) * 3 + mi + 1;
-                var isCurrent = year == DateTime.Now.Year && m == DateTime.Now.Month;
+                var quarter = q;
+                var isCurrent = year == DateTime.Now.Year && IsCurrentQuarter(quarter);
                 <div class="list-group-item d-flex align-items-center justify-content-between @(isCurrent ? "bg-warning-subtle" : "")">
-                    <div class="fw-medium">@MonthName(m)</div>
+                    <div class="fw-medium">@quarter. čtvrtletí @year (@QuarterLabel(quarter))</div>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm"
-                                @onclick="() => GenerateDphAsync(year, m)" disabled="@busy">DPH</button>
+                                @onclick="() => GenerateQuarterDphAsync(year, quarter)" disabled="@busy">DPH</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm"
-                                @onclick="() => GenerateKhAsync(year, m)" disabled="@busy">Kontrolní hlášení</button>
+                                @onclick="() => GenerateQuarterKhAsync(year, quarter)" disabled="@busy">Kontrolní hlášení</button>
                         <button type="button" class="btn btn-outline-primary btn-sm"
-                                @onclick="() => PreviewAsync(year, m)" disabled="@busy">Náhled</button>
+                                @onclick="() => PreviewQuarterAsync(year, quarter)" disabled="@busy">Náhled</button>
                     </div>
                 </div>
             }
         </div>
     }
+    else
+    {
+        @for (var q = 1; q <= 4; q++)
+        {
+            var quarter = q;
+            <h3 class="mt-4">@quarter. čtvrtletí @year</h3>
+            <div class="list-group mb-3">
+                @for (var mi = 0; mi < 3; mi++)
+                {
+                    var m = (quarter - 1) * 3 + mi + 1;
+                    var isCurrent = year == DateTime.Now.Year && m == DateTime.Now.Month;
+                    <div class="list-group-item d-flex align-items-center justify-content-between @(isCurrent ? "bg-warning-subtle" : "")">
+                        <div class="fw-medium">@MonthName(m)</div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    @onclick="() => GenerateDphAsync(year, m)" disabled="@busy">DPH</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    @onclick="() => GenerateKhAsync(year, m)" disabled="@busy">Kontrolní hlášení</button>
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    @onclick="() => PreviewAsync(year, m)" disabled="@busy">Náhled</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
 
     @if (report != null)
     {
-        <h4 class="mt-4">Souhrn — @MonthName(report.Month) @report.Year</h4>
+        <h4 class="mt-4">Souhrn — @PeriodLabel(report)</h4>
         <div class="table-responsive">
             <table class="table table-sm">
                 <tbody>
@@ -99,30 +150,39 @@
     private string? infoMessage;
     private List<string> errors = new();
     private VatMonthlyReport? report;
+    private VatPeriod vatPeriod = VatPeriod.Monthly;
+    private List<Invoice> missingDuzp = new();
+
+    private Company? activeCompany;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateTask!;
-        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-        if (claim == null || !Guid.TryParse(claim.Value, out var uid))
+        activeCompany = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+        if (activeCompany == null)
         {
-            NavigationManager.NavigateTo("/auth/login");
+            NavigationManager.NavigateTo("/companies/new", forceLoad: true);
             return;
         }
-
-        var own = await ContactProvider.GetOwnCompanyAsync(uid);
-        if (own == null)
-        {
-            NavigationManager.NavigateTo("/vat/company?returnUrl=/vat/monthly");
-        }
+        vatPeriod = activeCompany.VatPeriod;
+        await LoadMissingDuzpAsync(activeCompany.Id);
     }
 
-    private void ChangeYear(int delta)
+    private async Task LoadMissingDuzpAsync(Guid companyId)
+    {
+        var list = await InvoiceProvider.GetInvoicesMissingRequiredDuzpAsync(companyId, year);
+        missingDuzp = list.ToList();
+    }
+
+    private async Task ChangeYear(int delta)
     {
         year += delta;
         report = null;
         infoMessage = null;
         errors.Clear();
+        if (activeCompany != null)
+        {
+            await LoadMissingDuzpAsync(activeCompany.Id);
+        }
     }
 
     private async Task<VatMonthlyReport?> BuildReportAsync(int y, int m)
@@ -130,17 +190,9 @@
         errors.Clear();
         infoMessage = null;
 
-        var authState = await AuthenticationStateTask!;
-        var userId = Guid.Parse(authState.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        if (activeCompany == null) return null;
 
-        var own = await ContactProvider.GetOwnCompanyAsync(userId);
-        if (own == null)
-        {
-            NavigationManager.NavigateTo("/vat/company?returnUrl=/vat/monthly");
-            return null;
-        }
-
-        var invoices = await InvoiceProvider.GetVatMonthInvoicesAsync(userId, y, m);
+        var invoices = await InvoiceProvider.GetVatMonthInvoicesAsync(activeCompany.Id, y, m);
         if (invoices.Count == 0)
         {
             infoMessage = $"Žádné faktury pro {MonthName(m)} {y}.";
@@ -149,7 +201,32 @@
 
         try
         {
-            return await VatCalculationService.BuildAsync(invoices, own, y, m);
+            return await VatCalculationService.BuildAsync(invoices, activeCompany, y, m);
+        }
+        catch (VatExportValidationException ex)
+        {
+            errors.AddRange(ex.Errors);
+            return null;
+        }
+    }
+
+    private async Task<VatMonthlyReport?> BuildQuarterReportAsync(int y, int q)
+    {
+        errors.Clear();
+        infoMessage = null;
+
+        if (activeCompany == null) return null;
+
+        var invoices = await InvoiceProvider.GetVatQuarterInvoicesAsync(activeCompany.Id, y, q);
+        if (invoices.Count == 0)
+        {
+            infoMessage = $"Žádné faktury pro {q}. čtvrtletí {y}.";
+            return null;
+        }
+
+        try
+        {
+            return await VatCalculationService.BuildQuarterAsync(invoices, activeCompany, y, q);
         }
         catch (VatExportValidationException ex)
         {
@@ -165,6 +242,13 @@
         finally { busy = false; }
     }
 
+    private async Task PreviewQuarterAsync(int y, int q)
+    {
+        busy = true;
+        try { report = await BuildQuarterReportAsync(y, q); }
+        finally { busy = false; }
+    }
+
     private async Task GenerateDphAsync(int y, int m)
     {
         busy = true;
@@ -176,6 +260,21 @@
             await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
                 $"dph-{y}-{m}m.xml", xml, "application/xml");
             infoMessage = $"DPH pro {MonthName(m)} {y} staženo.";
+        }
+        finally { busy = false; }
+    }
+
+    private async Task GenerateQuarterDphAsync(int y, int q)
+    {
+        busy = true;
+        try
+        {
+            report = await BuildQuarterReportAsync(y, q);
+            if (report == null) return;
+            var xml = DphGenerator.Generate(report);
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
+                $"dph-{y}-Q{q}.xml", xml, "application/xml");
+            infoMessage = $"DPH pro {q}. čtvrtletí {y} staženo.";
         }
         finally { busy = false; }
     }
@@ -195,6 +294,21 @@
         finally { busy = false; }
     }
 
+    private async Task GenerateQuarterKhAsync(int y, int q)
+    {
+        busy = true;
+        try
+        {
+            report = await BuildQuarterReportAsync(y, q);
+            if (report == null) return;
+            var xml = KhGenerator.Generate(report);
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText",
+                $"kontrolni_hlaseni-{y}-Q{q}.xml", xml, "application/xml");
+            infoMessage = $"Kontrolní hlášení pro {q}. čtvrtletí {y} staženo.";
+        }
+        finally { busy = false; }
+    }
+
     private static readonly string[] MonthNames =
     {
         "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
@@ -202,6 +316,24 @@
     };
 
     private static string MonthName(int m) => MonthNames[m - 1];
+
+    private static string QuarterLabel(int q) => q switch
+    {
+        1 => "leden–březen",
+        2 => "duben–červen",
+        3 => "červenec–září",
+        4 => "říjen–prosinec",
+        _ => string.Empty,
+    };
+
+    private static bool IsCurrentQuarter(int q)
+    {
+        var m = DateTime.Now.Month;
+        return q == ((m - 1) / 3) + 1;
+    }
+
+    private static string PeriodLabel(VatMonthlyReport r)
+        => r.IsQuarterly ? $"{r.Quarter}. čtvrtletí {r.Year}" : $"{MonthName(r.Month)} {r.Year}";
 
     private static string Fmt(decimal value) =>
         value.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"));

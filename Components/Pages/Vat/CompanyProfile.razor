@@ -1,14 +1,14 @@
 @page "/vat/company"
 @using System.ComponentModel.DataAnnotations
-@using System.Security.Claims
 @using Isdocovac.Models
 @using Isdocovac.Models.Enums
 @using Isdocovac.Providers
+@using Isdocovac.Services.Authentication
 @using Isdocovac.Services.CodeLists
 @using Microsoft.AspNetCore.Authorization
-@using Microsoft.AspNetCore.Components.Authorization
 @attribute [Authorize]
-@inject IContactProvider ContactProvider
+@inject ICompanyProvider CompanyProvider
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
 @inject ICodeListService CodeLists
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
@@ -29,6 +29,18 @@
         <EditForm Model="model" OnValidSubmit="SaveAsync">
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" />
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Display name *</label>
+                    <InputText class="form-control" @bind-Value="model.Name" />
+                    <div class="form-text">Krátký název pro přepínač společností.</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">IČO</label>
+                    <InputText class="form-control" @bind-Value="model.Ico" />
+                </div>
+            </div>
 
             <div class="row">
                 <div class="col-md-6 mb-3">
@@ -148,6 +160,13 @@
                     <label class="form-label">ID datové schránky</label>
                     <InputText class="form-control" @bind-Value="model.DataBoxId" />
                 </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Zdaňovací období DPH *</label>
+                    <InputSelect class="form-select" @bind-Value="model.VatPeriod">
+                        <option value="@VatPeriod.Monthly">Měsíční</option>
+                        <option value="@VatPeriod.Quarterly">Čtvrtletní</option>
+                    </InputSelect>
+                </div>
             </div>
 
             <div class="d-flex gap-2 mt-4">
@@ -164,30 +183,25 @@
 </div>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
-
     [SupplyParameterFromQuery]
     private string? returnUrl { get; set; }
 
-    private ContactFormModel? model;
+    private CompanyFormModel? model;
+    private Company? company;
     private bool saving;
     private string? statusMessage;
     private bool statusSuccess;
-    private Guid userId;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateTask!;
-        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-        if (claim == null || !Guid.TryParse(claim.Value, out userId))
+        company = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+        if (company == null)
         {
-            NavigationManager.NavigateTo("/auth/login");
+            NavigationManager.NavigateTo("/companies/new", forceLoad: true);
             return;
         }
 
-        var existing = await ContactProvider.GetOwnCompanyAsync(userId);
-        model = existing != null ? ContactFormModel.From(existing) : new ContactFormModel();
+        model = CompanyFormModel.From(company);
     }
 
     private async Task SaveAsync()
@@ -195,8 +209,9 @@
         saving = true;
         try
         {
-            var contact = model!.ToEntity(userId);
-            await ContactProvider.UpsertOwnCompanyAsync(contact);
+            if (company == null) return;
+            model!.ApplyTo(company);
+            await CompanyProvider.UpdateAsync(company);
             statusSuccess = true;
             statusMessage = "Uloženo.";
             if (!string.IsNullOrEmpty(returnUrl))
@@ -226,10 +241,12 @@
         }
     }
 
-    public class ContactFormModel
+    public class CompanyFormModel
     {
-        public bool IsLegalEntity { get; set; }
+        [Required] public string Name { get; set; } = string.Empty;
+        public bool IsLegalEntity { get; set; } = true;
         [Required] public string? Dic { get; set; }
+        public string? Ico { get; set; }
         public string? CompanyName { get; set; }
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
@@ -246,11 +263,14 @@
         public int? TaxOfficeBranchCode { get; set; }
         public string? OkecCode { get; set; }
         public string? DataBoxId { get; set; }
+        public VatPeriod VatPeriod { get; set; } = VatPeriod.Monthly;
 
-        public static ContactFormModel From(Contact c) => new()
+        public static CompanyFormModel From(Company c) => new()
         {
+            Name = c.Name,
             IsLegalEntity = c.IsLegalEntity,
             Dic = c.Dic,
+            Ico = c.Ico,
             CompanyName = c.CompanyName,
             FirstName = c.FirstName,
             LastName = c.LastName,
@@ -267,31 +287,32 @@
             TaxOfficeBranchCode = c.TaxOfficeBranchCode,
             OkecCode = c.OkecCode,
             DataBoxId = c.DataBoxId,
+            VatPeriod = c.VatPeriod,
         };
 
-        public Contact ToEntity(Guid userId) => new()
+        public void ApplyTo(Company c)
         {
-            UserId = userId,
-            Kind = ContactKind.OwnCompany,
-            IsLegalEntity = IsLegalEntity,
-            Dic = Dic,
-            CompanyName = CompanyName,
-            FirstName = FirstName,
-            LastName = LastName,
-            Titul = Titul,
-            Street = Street,
-            HouseNumber = HouseNumber,
-            OrientNumber = OrientNumber,
-            City = City,
-            Zip = Zip,
-            CountryCode = string.IsNullOrWhiteSpace(CountryCode) ? "CZ" : CountryCode.ToUpperInvariant(),
-            Email = Email,
-            Phone = Phone,
-            TaxOfficeCode = TaxOfficeCode,
-            TaxOfficeBranchCode = TaxOfficeBranchCode,
-            OkecCode = OkecCode,
-            DataBoxId = DataBoxId,
-            IsActive = true,
-        };
+            c.Name = Name;
+            c.IsLegalEntity = IsLegalEntity;
+            c.Dic = Dic;
+            c.Ico = Ico;
+            c.CompanyName = CompanyName;
+            c.FirstName = FirstName;
+            c.LastName = LastName;
+            c.Titul = Titul;
+            c.Street = Street;
+            c.HouseNumber = HouseNumber;
+            c.OrientNumber = OrientNumber;
+            c.City = City;
+            c.Zip = Zip;
+            c.CountryCode = string.IsNullOrWhiteSpace(CountryCode) ? "CZ" : CountryCode.ToUpperInvariant();
+            c.Email = Email;
+            c.Phone = Phone;
+            c.TaxOfficeCode = TaxOfficeCode;
+            c.TaxOfficeBranchCode = TaxOfficeBranchCode;
+            c.OkecCode = OkecCode;
+            c.DataBoxId = DataBoxId;
+            c.VatPeriod = VatPeriod;
+        }
     }
 }

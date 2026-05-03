@@ -10,6 +10,7 @@
 @inject IParsedInvoiceProcessingProvider ProcessingProvider
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @attribute [Authorize]
 @rendermode InteractiveServer
 
@@ -226,22 +227,19 @@
     private List<ParsedInvoice>? parsedInvoices;
     private bool isLoading = true;
     private string? errorMessage;
-    private Guid userId;
+    private Guid companyId;
     private ParsedInvoiceStatus? selectedStatus = null;
     private HashSet<Guid> importingInvoices = new();
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await authenticationStateTask!;
-        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-
-        if (userIdClaim == null)
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
         {
-            NavigationManager.NavigateTo("/auth/login");
+            NavigationManager.NavigateTo("/companies/new", forceLoad: true);
             return;
         }
-
-        userId = Guid.Parse(userIdClaim.Value);
+        companyId = active.Value;
         await LoadParsedInvoices();
     }
 
@@ -251,7 +249,7 @@
         {
             isLoading = true;
             errorMessage = null;
-            parsedInvoices = (await ParsedInvoiceService.GetUserParsedInvoicesAsync(userId, selectedStatus)).ToList();
+            parsedInvoices = (await ParsedInvoiceService.GetCompanyParsedInvoicesAsync(companyId, selectedStatus)).ToList();
         }
         catch (Exception ex)
         {
@@ -276,7 +274,7 @@
 
         try
         {
-            var invoice = await InvoiceImportService.ImportFromParsedInvoiceAsync(parsedInvoiceId, userId);
+            var invoice = await InvoiceImportService.ImportFromParsedInvoiceAsync(parsedInvoiceId, companyId);
             errorMessage = null;
             await LoadParsedInvoices();
         }

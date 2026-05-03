@@ -4,17 +4,21 @@ using Isdocovac.Models.Enums;
 
 namespace Isdocovac.Models;
 
-[Table("contacts")]
-public class Contact
+[Table("companies")]
+public class Company
 {
     [Key]
     public Guid Id { get; set; }
 
     [Required]
-    public Guid CompanyId { get; set; }
+    public Guid OwnerUserId { get; set; }
 
     [Required]
-    public ContactKind Kind { get; set; }
+    [MaxLength(255)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    public bool IsLegalEntity { get; set; } = true;
 
     [MaxLength(255)]
     public string? CompanyName { get; set; }
@@ -27,9 +31,6 @@ public class Contact
 
     [MaxLength(50)]
     public string? Titul { get; set; }
-
-    [Required]
-    public bool IsLegalEntity { get; set; }
 
     [MaxLength(20)]
     public string? Dic { get; set; }
@@ -83,6 +84,6 @@ public class Contact
     [Required]
     public DateTime UpdatedAt { get; set; }
 
-    [ForeignKey(nameof(CompanyId))]
-    public Company Company { get; set; } = null!;
+    [ForeignKey(nameof(OwnerUserId))]
+    public User Owner { get; set; } = null!;
 }

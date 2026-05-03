@@ -67,7 +67,7 @@ public class InvoiceImportServiceTests
         return new ParsedInvoice
         {
             Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
+            CompanyId = Guid.NewGuid(),
             FileName = "test.isdoc",
             Status = status,
             IsValid = isValid,
@@ -125,7 +125,7 @@ public class InvoiceImportServiceTests
         capturedInvoice.Should().NotBeNull();
         capturedInvoice!.Direction.Should().Be(InvoiceDirection.Outbound);
         capturedInvoice.Source.Should().Be(InvoiceSource.Fakturoid);
-        capturedInvoice.UserId.Should().Be(userId);
+        capturedInvoice.CompanyId.Should().Be(userId);
     }
 
     [Fact]

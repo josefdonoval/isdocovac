@@ -9,11 +9,11 @@ namespace Isdocovac.Tests.Services.Vat;
 
 public class VatCalculationServiceTests
 {
-    private static Contact OwnCompany() => new()
+    private static Company OwnCompany() => new()
     {
         Id = Guid.NewGuid(),
-        UserId = Guid.NewGuid(),
-        Kind = ContactKind.OwnCompany,
+        OwnerUserId = Guid.NewGuid(),
+        Name = "Josef Donoval",
         IsLegalEntity = false,
         Dic = "8605256220",
         FirstName = "Josef",
@@ -126,6 +126,28 @@ public class VatCalculationServiceTests
         report.PSl23Eu.Should().Be(2500m);
     }
 
+    [Fact]
+    public async Task BuildQuarterAsync_GroupsThreeMonths()
+    {
+        var userId = Guid.NewGuid();
+        var invoices = new List<Invoice>
+        {
+            MakeOutbound(userId, "Q2-A", new DateTime(2026, 4, 5), 1000m, 210m, clientDic: "06990258", total: 12000m),
+            MakeOutbound(userId, "Q2-B", new DateTime(2026, 5, 20), 2000m, 420m, clientDic: "06990258", total: 12000m),
+            MakeOutbound(userId, "Q2-C", new DateTime(2026, 6, 30), 3000m, 630m, clientDic: "06990258", total: 12000m),
+        };
+
+        var svc = new VatCalculationService(PassThroughFx().Object);
+        var report = await svc.BuildQuarterAsync(invoices, OwnCompany(), 2026, 2);
+
+        report.IsQuarterly.Should().BeTrue();
+        report.Quarter.Should().Be(2);
+        report.Month.Should().Be(4);
+        report.Obrat23.Should().Be(6000m);
+        report.Dan23.Should().Be(1260m);
+        report.A4Rows.Should().HaveCount(3);
+    }
+
     private static Invoice MakeOutbound(Guid userId, string number, DateTime duzp, decimal base21, decimal vat21,
         string? clientDic = null, decimal? total = null, string currency = "CZK")
     {
@@ -133,7 +155,7 @@ public class VatCalculationServiceTests
         return new Invoice
         {
             Id = Guid.NewGuid(),
-            UserId = userId,
+            CompanyId = userId,
             Direction = InvoiceDirection.Outbound,
             Source = InvoiceSource.Manual,
             Number = number,
@@ -160,7 +182,7 @@ public class VatCalculationServiceTests
         return new Invoice
         {
             Id = Guid.NewGuid(),
-            UserId = userId,
+            CompanyId = userId,
             Direction = InvoiceDirection.Inbound,
             Source = InvoiceSource.Manual,
             Number = number,

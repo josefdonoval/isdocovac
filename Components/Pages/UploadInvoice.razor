@@ -8,6 +8,7 @@
 @inject IUserProvider UserProvider
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @attribute [Authorize]
 @rendermode InteractiveServer
 
@@ -193,19 +194,10 @@
                 return;
             }
 
-            var userIdString = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out var userId))
+            var companyId = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+            if (companyId == null)
             {
-                errorMessage = "Invalid session. Please log in again.";
-                isUploading = false;
-                return;
-            }
-
-            var dbUser = await UserProvider.GetUserByIdAsync(userId);
-            if (dbUser == null)
-            {
-                errorMessage = "User not found. Please log in again.";
-                isUploading = false;
+                NavigationManager.NavigateTo("/companies/new", forceLoad: true);
                 return;
             }
 
@@ -213,7 +205,7 @@
 
             // Pass line mode for PDF files
             var lineMode = isPdfFile ? selectedLineMode : (InvoiceLineMode?)null;
-            await ParsedInvoiceService.UploadIsdocAsync(dbUser.Id, selectedFile.Name, selectedFile.Size, selectedFile.ContentType, stream, lineMode);
+            await ParsedInvoiceService.UploadIsdocAsync(companyId.Value, selectedFile.Name, selectedFile.Size, selectedFile.ContentType, stream, lineMode);
 
             if (isPdfFile)
             {

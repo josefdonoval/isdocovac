@@ -8,6 +8,7 @@
 @attribute [Authorize]
 @inject IContactProvider ContactProvider
 @inject NavigationManager NavigationManager
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
 @rendermode InteractiveServer
 
 <PageTitle>Kontakty</PageTitle>
@@ -72,24 +73,23 @@
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     private List<Contact>? contacts;
-    private Guid userId;
+    private Guid companyId;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateTask!;
-        var claim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
-        if (claim == null || !Guid.TryParse(claim.Value, out userId))
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
         {
-            NavigationManager.NavigateTo("/auth/login");
+            NavigationManager.NavigateTo("/companies/new", forceLoad: true);
             return;
         }
-
+        companyId = active.Value;
         await ReloadAsync();
     }
 
     private async Task ReloadAsync()
     {
-        var list = await ContactProvider.ListDirectoryAsync(userId);
+        var list = await ContactProvider.ListDirectoryAsync(companyId);
         contacts = list.ToList();
     }
 

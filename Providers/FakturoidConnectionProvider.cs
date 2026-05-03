@@ -6,10 +6,10 @@ namespace Isdocovac.Providers;
 
 public interface IFakturoidConnectionProvider
 {
-    Task<FakturoidConnection?> GetByUserIdAsync(Guid userId);
+    Task<FakturoidConnection?> GetByCompanyIdAsync(Guid companyId);
     Task<FakturoidConnection?> GetByIdAsync(Guid connectionId);
     Task<FakturoidConnection> CreateAsync(
-        Guid userId,
+        Guid companyId,
         string accessToken,
         string refreshToken,
         DateTime expiresAt,
@@ -18,7 +18,7 @@ public interface IFakturoidConnectionProvider
     Task UpdateTokensAsync(Guid connectionId, string accessToken, string refreshToken, DateTime expiresAt);
     Task UpdateLastSyncedAsync(Guid connectionId);
     Task DisconnectAsync(Guid connectionId);
-    Task<bool> IsConnectedAsync(Guid userId);
+    Task<bool> IsConnectedAsync(Guid companyId);
 }
 
 public class FakturoidConnectionProvider : IFakturoidConnectionProvider
@@ -30,11 +30,11 @@ public class FakturoidConnectionProvider : IFakturoidConnectionProvider
         _contextFactory = contextFactory;
     }
 
-    public async Task<FakturoidConnection?> GetByUserIdAsync(Guid userId)
+    public async Task<FakturoidConnection?> GetByCompanyIdAsync(Guid companyId)
     {
         await using var context = _contextFactory.CreateDbContext();
         return await context.FakturoidConnections
-            .FirstOrDefaultAsync(fc => fc.UserId == userId && fc.IsActive);
+            .FirstOrDefaultAsync(fc => fc.CompanyId == companyId && fc.IsActive);
     }
 
     public async Task<FakturoidConnection?> GetByIdAsync(Guid connectionId)
@@ -45,7 +45,7 @@ public class FakturoidConnectionProvider : IFakturoidConnectionProvider
     }
 
     public async Task<FakturoidConnection> CreateAsync(
-        Guid userId,
+        Guid companyId,
         string accessToken,
         string refreshToken,
         DateTime expiresAt,
@@ -55,7 +55,7 @@ public class FakturoidConnectionProvider : IFakturoidConnectionProvider
         var connection = new FakturoidConnection
         {
             Id = Guid.NewGuid(),
-            UserId = userId,
+            CompanyId = companyId,
             AccessToken = accessToken,
             RefreshToken = refreshToken,
             AccessTokenExpiresAt = expiresAt,
@@ -112,10 +112,10 @@ public class FakturoidConnectionProvider : IFakturoidConnectionProvider
         }
     }
 
-    public async Task<bool> IsConnectedAsync(Guid userId)
+    public async Task<bool> IsConnectedAsync(Guid companyId)
     {
         await using var context = _contextFactory.CreateDbContext();
         return await context.FakturoidConnections
-            .AnyAsync(fc => fc.UserId == userId && fc.IsActive);
+            .AnyAsync(fc => fc.CompanyId == companyId && fc.IsActive);
     }
 }

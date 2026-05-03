@@ -4,6 +4,7 @@ public class UserSession
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
+    public Guid? ActiveCompanyId { get; set; }
     public string SessionTokenHash { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }

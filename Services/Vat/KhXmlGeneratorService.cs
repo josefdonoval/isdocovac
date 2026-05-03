@@ -65,7 +65,7 @@ public class KhXmlGeneratorService : IKhXmlGeneratorService
             new XAttribute("mesic", r.Month.ToString(CultureInfo.InvariantCulture)));
     }
 
-    private static XElement BuildVetaP(Contact c)
+    private static XElement BuildVetaP(Company c)
     {
         var element = new XElement("VetaP",
             new XAttribute("c_orient", c.OrientNumber ?? string.Empty),

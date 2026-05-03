@@ -3,9 +3,13 @@
 @implements IDisposable
 
 <div class="page">
-    <aside class="sidebar">
-        <NavMenu />
-    </aside>
+    <AuthorizeView>
+        <Authorized>
+            <aside class="sidebar">
+                <NavMenu />
+            </aside>
+        </Authorized>
+    </AuthorizeView>
 
     <main>
         <header class="top-row">

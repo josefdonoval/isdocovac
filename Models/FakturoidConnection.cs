@@ -3,7 +3,7 @@ namespace Isdocovac.Models;
 public class FakturoidConnection
 {
     public Guid Id { get; set; }
-    public Guid UserId { get; set; }
+    public Guid CompanyId { get; set; }
 
     // OAuth credentials
     public string AccessToken { get; set; } = string.Empty;
@@ -24,6 +24,6 @@ public class FakturoidConnection
     public DateTime UpdatedAt { get; set; }
 
     // Navigation properties
-    public User User { get; set; } = null!;
+    public Company Company { get; set; } = null!;
     public ICollection<FakturoidInvoice> Invoices { get; set; } = new List<FakturoidInvoice>();
 }

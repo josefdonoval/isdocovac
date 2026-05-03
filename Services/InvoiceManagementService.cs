@@ -7,10 +7,10 @@ namespace Isdocovac.Services;
 
 public interface IInvoiceManagementService
 {
-    Task<IEnumerable<Invoice>> GetUserInvoicesAsync(Guid userId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
-    Task<int> GetUserInvoiceCountAsync(Guid userId, InvoiceDirection? direction = null);
+    Task<IEnumerable<Invoice>> GetCompanyInvoicesAsync(Guid companyId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
+    Task<int> GetCompanyInvoiceCountAsync(Guid companyId, InvoiceDirection? direction = null);
     Task<Invoice?> GetInvoiceDetailsAsync(Guid invoiceId);
-    Task<string> GenerateInvoiceNumberAsync(Guid userId, DateTime vatDate);
+    Task<string> GenerateInvoiceNumberAsync(Guid companyId, DateTime vatDate);
     Task<Invoice> CreateManualInvoiceAsync(Invoice invoice);
     Task<Invoice> CreateManualInvoiceWithAttachmentAsync(Invoice invoice, IBrowserFile? pdfFile = null);
     Task UpdateInvoiceAsync(Invoice invoice);
@@ -40,14 +40,14 @@ public class InvoiceManagementService : IInvoiceManagementService
         _logger = logger;
     }
 
-    public async Task<IEnumerable<Invoice>> GetUserInvoicesAsync(Guid userId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50)
+    public async Task<IEnumerable<Invoice>> GetCompanyInvoicesAsync(Guid companyId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50)
     {
-        return await _invoiceProvider.GetByUserIdAsync(userId, direction, page, pageSize);
+        return await _invoiceProvider.GetByCompanyIdAsync(companyId, direction, page, pageSize);
     }
 
-    public async Task<int> GetUserInvoiceCountAsync(Guid userId, InvoiceDirection? direction = null)
+    public async Task<int> GetCompanyInvoiceCountAsync(Guid companyId, InvoiceDirection? direction = null)
     {
-        return await _invoiceProvider.GetCountAsync(userId, direction);
+        return await _invoiceProvider.GetCountAsync(companyId, direction);
     }
 
     public async Task<Invoice?> GetInvoiceDetailsAsync(Guid invoiceId)
@@ -55,12 +55,9 @@ public class InvoiceManagementService : IInvoiceManagementService
         return await _invoiceProvider.GetWithDetailsAsync(invoiceId);
     }
 
-    public async Task<string> GenerateInvoiceNumberAsync(Guid userId, DateTime vatDate)
+    public async Task<string> GenerateInvoiceNumberAsync(Guid companyId, DateTime vatDate)
     {
-        // Get the count of invoices for this VAT month
-        var count = await _invoiceProvider.GetCountForVatMonthAsync(userId, vatDate.Year, vatDate.Month);
-
-        // Format: YYYYMMXXXX where XXXX is the counter (starting from 1)
+        var count = await _invoiceProvider.GetCountForVatMonthAsync(companyId, vatDate.Year, vatDate.Month);
         var counter = count + 1;
         return $"{vatDate.Year:0000}{vatDate.Month:00}{counter:0000}";
     }
@@ -83,13 +80,11 @@ public class InvoiceManagementService : IInvoiceManagementService
 
     public async Task<Invoice> CreateManualInvoiceWithAttachmentAsync(Invoice invoice, IBrowserFile? pdfFile = null)
     {
-        // Create the invoice first
         var createdInvoice = await CreateManualInvoiceAsync(invoice);
 
-        // Upload PDF attachment if provided
         if (pdfFile != null)
         {
-            await UploadPdfAttachmentAsync(createdInvoice.Id, createdInvoice.UserId, pdfFile);
+            await UploadPdfAttachmentAsync(createdInvoice.Id, createdInvoice.CompanyId, pdfFile);
         }
 
         return createdInvoice;
@@ -97,32 +92,25 @@ public class InvoiceManagementService : IInvoiceManagementService
 
     public async Task UpdateInvoiceWithAttachmentAsync(Invoice invoice, IBrowserFile? newPdfFile = null, Guid? existingAttachmentIdToReplace = null)
     {
-        // Update the invoice
         await UpdateInvoiceAsync(invoice);
 
-        // Handle PDF attachment replacement if needed
         if (newPdfFile != null)
         {
-            // Delete old attachment if specified
             if (existingAttachmentIdToReplace.HasValue)
             {
                 var oldAttachment = await _attachmentProvider.GetByIdAsync(existingAttachmentIdToReplace.Value);
                 if (oldAttachment != null && !string.IsNullOrEmpty(oldAttachment.BlobContainerName) && !string.IsNullOrEmpty(oldAttachment.BlobName))
                 {
-                    // Delete from blob storage
                     await _blobStorageProvider.DeleteBlobAsync(oldAttachment.BlobContainerName, oldAttachment.BlobName);
-
-                    // Delete attachment record
                     await _attachmentProvider.DeleteAsync(existingAttachmentIdToReplace.Value);
                 }
             }
 
-            // Upload new attachment
-            await UploadPdfAttachmentAsync(invoice.Id, invoice.UserId, newPdfFile);
+            await UploadPdfAttachmentAsync(invoice.Id, invoice.CompanyId, newPdfFile);
         }
     }
 
-    private async Task UploadPdfAttachmentAsync(Guid invoiceId, Guid userId, IBrowserFile pdfFile)
+    private async Task UploadPdfAttachmentAsync(Guid invoiceId, Guid companyId, IBrowserFile pdfFile)
     {
         const long maxFileSize = 10 * 1024 * 1024; // 10 MB
 
@@ -137,7 +125,7 @@ public class InvoiceManagementService : IInvoiceManagementService
         }
 
         var containerName = _configuration["AzureStorage:InvoiceContainerName"] ?? "invoice-uploads";
-        var blobName = $"{userId}/invoices/{invoiceId}/{pdfFile.Name}";
+        var blobName = $"{companyId}/invoices/{invoiceId}/{pdfFile.Name}";
 
         using var stream = pdfFile.OpenReadStream(maxFileSize);
         var blobUrl = await _blobStorageProvider.UploadBlobAsync(

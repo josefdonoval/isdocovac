@@ -40,7 +40,7 @@ public class ParsedInvoiceServiceTests
         return new ParsedInvoice
         {
             Id = Guid.NewGuid(),
-            UserId = Guid.NewGuid(),
+            CompanyId = Guid.NewGuid(),
             FileName = "test.isdoc",
             Status = status,
             ImportedInvoiceId = importedInvoiceId

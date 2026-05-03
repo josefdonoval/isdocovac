@@ -1,4 +1,14 @@
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
+@inject ICompanyProvider CompanyProvider
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+@implements IDisposable
 
 <div class="brand">
     <a class="brand-link" href="/">
@@ -11,6 +21,23 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav-list">
+        @if (companies.Count > 0)
+        {
+            <div class="nav-section">Active company</div>
+            <div class="px-3 pb-2">
+                <select class="form-select form-select-sm" value="@activeCompanyId?.ToString()" @onchange="OnCompanyChanged">
+                    @foreach (var c in companies)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+                <div class="d-flex gap-2 mt-2">
+                    <a class="btn btn-sm btn-outline-secondary flex-fill" href="/companies">Manage</a>
+                    <a class="btn btn-sm btn-outline-primary" href="/companies/new" title="New company">+</a>
+                </div>
+            </div>
+        }
+
         <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>
             <span>Home</span>
@@ -63,7 +90,7 @@
 
         <NavLink class="nav-link" href="vat/monthly">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg>
-            <span>Monthly VAT</span>
+            <span>@vatLabel</span>
         </NavLink>
 
         <NavLink class="nav-link" href="vat/company">
@@ -72,3 +99,48 @@
         </NavLink>
     </nav>
 </div>
+
+@code {
+    private string vatLabel = "Monthly VAT";
+    private List<Company> companies = new();
+    private Guid? activeCompanyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        await RefreshAsync();
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await RefreshAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshAsync()
+    {
+        var userId = await CurrentCompanyAccessor.GetCurrentUserIdAsync();
+        if (userId == null)
+        {
+            companies = new();
+            activeCompanyId = null;
+            return;
+        }
+
+        companies = (await CompanyProvider.ListByOwnerAsync(userId.Value)).ToList();
+        var active = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+        activeCompanyId = active?.Id;
+        vatLabel = active?.VatPeriod == VatPeriod.Quarterly ? "Quarterly VAT" : "Monthly VAT";
+    }
+
+    private async Task OnCompanyChanged(ChangeEventArgs e)
+    {
+        if (e.Value is string s && Guid.TryParse(s, out var id) && id != activeCompanyId)
+        {
+            await CurrentCompanyAccessor.SetActiveCompanyAsync(id);
+            Nav.NavigateTo(Nav.Uri, forceLoad: true);
+        }
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}
