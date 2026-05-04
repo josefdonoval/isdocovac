@@ -1,0 +1,309 @@
+@page "/investments/new"
+@page "/investments/{Id:guid}"
+@using System.ComponentModel.DataAnnotations
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers.Investments
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Investments
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IOptionTradeProvider TradeProvider
+@inject IOptionTradeCalculationService TradeCalc
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>@(IsNew ? "Nový obchod" : "Upravit obchod")</PageTitle>
+
+<div class="container py-4" style="max-width: 800px;">
+    <h1>@(IsNew ? "Nový opční obchod" : "Upravit opční obchod")</h1>
+    <p class="text-muted small">
+        Po uložení proběhne FIFO matching pro daný Symbol a aktualizují se Realized P/L hodnoty.
+        CNB kurz se dotahuje automaticky.
+    </p>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(statusSuccess ? "alert-success" : "alert-danger")">@statusMessage</div>
+    }
+
+    @if (model != null)
+    {
+        <EditForm Model="model" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Symbol *</label>
+                    <InputText class="form-control" @bind-Value="model.Symbol" placeholder="VIX 21MAY25 24.5 P" />
+                    <div class="form-text">Identifikátor opčního kontraktu (např. „VIX 21MAY25 24.5 P").</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Code *</label>
+                    <InputSelect class="form-select" @bind-Value="model.Code">
+                        <option value="@OptionTradeCode.Open">O — Open</option>
+                        <option value="@OptionTradeCode.Close">C — Close</option>
+                    </InputSelect>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Date/Time *</label>
+                    <InputDate Type="InputDateType.DateTimeLocal" class="form-control" @bind-Value="model.TradeDateTime" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Quantity *</label>
+                    <InputNumber class="form-control" @bind-Value="model.Quantity" />
+                    <div class="form-text">Počet kontraktů (vždy kladné). Sign se odvodí z Code (Open = buy, Close = sell).</div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">T. Price *</label>
+                    <InputNumber class="form-control" @bind-Value="model.TradePrice" step="0.000001" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Currency *</label>
+                    <InputSelect class="form-select" @bind-Value="model.Currency">
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                    </InputSelect>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Comm/Fee *</label>
+                    <InputNumber class="form-control" @bind-Value="model.CommissionFee" step="0.01" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                <InputTextArea class="form-control" rows="2" @bind-Value="model.Notes" />
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+                <button type="button" class="btn btn-outline-secondary" @onclick="PreviewAsync" disabled="@busy">
+                    Spočítat náhled
+                </button>
+                <button type="submit" class="btn btn-primary" disabled="@busy">
+                    @(busy ? "Ukládám…" : "Uložit")
+                </button>
+                <a class="btn btn-outline-secondary" href="/investments">Zpět</a>
+            </div>
+        </EditForm>
+
+        @if (preview != null)
+        {
+            <div class="card mb-3">
+                <div class="card-header">Náhled výpočtu</div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr><th>Proceeds (@preview.Currency)</th><td class="text-end">@Fmt(preview.Proceeds)</td></tr>
+                            <tr><th>Comm/Fee (@preview.Currency)</th><td class="text-end">@Fmt(preview.CommissionFee)</td></tr>
+                            <tr><th>Basis (@preview.Currency)</th><td class="text-end">@Fmt(preview.Basis)</td></tr>
+                            <tr><th>CNB date</th><td class="text-end">@preview.CnbDate.ToString("yyyy-MM-dd")</td></tr>
+                            <tr><th>@preview.Currency/CZK kurz</th><td class="text-end">@FmtRate(preview.FxRate) (amount @preview.FxAmount)</td></tr>
+                            <tr><th>Proceeds CZK</th><td class="text-end">@Fmt(preview.ProceedsCzk)</td></tr>
+                            <tr><th>Comm/Fee CZK</th><td class="text-end">@Fmt(preview.CommissionFeeCzk)</td></tr>
+                            <tr><th>Basis CZK</th><td class="text-end">@Fmt(preview.BasisCzk)</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="form-text">
+                        Realized P/L se počítá až při ukládání (závisí na FIFO matchi proti existujícím Open obchodům pro stejný Symbol).
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool IsNew => Id == null;
+
+    private Guid companyId;
+    private OptionTradeFormModel? model;
+    private OptionTrade? preview;
+    private bool busy;
+    private string? statusMessage;
+    private bool statusSuccess;
+    private string? originalSymbol;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        companyId = active.Value;
+
+        if (IsNew)
+        {
+            model = new OptionTradeFormModel
+            {
+                TradeDateTime = DateTime.Now,
+                Currency = "USD",
+                Code = OptionTradeCode.Open,
+            };
+        }
+        else
+        {
+            var existing = await TradeProvider.GetAsync(Id!.Value);
+            if (existing == null || existing.CompanyId != companyId)
+            {
+                Nav.NavigateTo("/investments");
+                return;
+            }
+            originalSymbol = existing.Symbol;
+            model = OptionTradeFormModel.From(existing);
+        }
+    }
+
+    private async Task PreviewAsync()
+    {
+        if (model == null) return;
+        busy = true;
+        statusMessage = null;
+        try
+        {
+            var t = model.ToTrade(companyId);
+            await TradeCalc.PrepareAsync(t);
+            preview = t;
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba výpočtu: {ex.Message}";
+            preview = null;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (model == null) return;
+        busy = true;
+        statusMessage = null;
+        try
+        {
+            var trade = IsNew
+                ? model.ToTrade(companyId)
+                : MergeIntoExisting(await TradeProvider.GetAsync(Id!.Value)
+                    ?? throw new InvalidOperationException("Trade not found"));
+
+            // PrepareAsync derives CnbDate from TradeDateTime — derive while still in user-local kind
+            // so a midnight-local time doesn't slip into the previous UTC day.
+            await TradeCalc.PrepareAsync(trade);
+
+            // Npgsql requires Kind=Utc for `timestamp with time zone` columns.
+            trade.TradeDateTime = ToUtc(trade.TradeDateTime);
+
+            if (IsNew)
+            {
+                trade = await TradeProvider.CreateAsync(trade);
+            }
+            else
+            {
+                trade = await TradeProvider.UpdateAsync(trade);
+            }
+
+            await TradeCalc.RecomputeMatchingAsync(companyId, trade.Symbol);
+            if (!IsNew && originalSymbol != null && originalSymbol != trade.Symbol)
+            {
+                await TradeCalc.RecomputeMatchingAsync(companyId, originalSymbol);
+            }
+
+            Nav.NavigateTo("/investments");
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private OptionTrade MergeIntoExisting(OptionTrade existing)
+    {
+        model!.ApplyTo(existing);
+        return existing;
+    }
+
+    private static string Fmt(decimal v) => v.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtRate(decimal v) => v.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+    // Inputs from <InputDate DateTimeLocal> arrive as Kind=Unspecified; treat as user's local time.
+    // Npgsql requires Kind=Utc for `timestamp with time zone`. See CLAUDE.md.
+    private static DateTime ToUtc(DateTime dt) => dt.Kind switch
+    {
+        DateTimeKind.Utc => dt,
+        DateTimeKind.Local => dt.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(dt, DateTimeKind.Local).ToUniversalTime(),
+    };
+
+    public class OptionTradeFormModel
+    {
+        [Required, MaxLength(64)] public string Symbol { get; set; } = string.Empty;
+        [Required] public DateTime TradeDateTime { get; set; } = DateTime.Now;
+        [Required, Range(1, int.MaxValue, ErrorMessage = "Zadej kladný počet kontraktů.")]
+        public int Quantity { get; set; }
+        [Required] public decimal TradePrice { get; set; }
+        [Required, MaxLength(3)] public string Currency { get; set; } = "USD";
+        [Range(0, double.MaxValue)] public decimal CommissionFee { get; set; }
+        [Required] public OptionTradeCode Code { get; set; } = OptionTradeCode.Open;
+        [MaxLength(500)] public string? Notes { get; set; }
+
+        public static OptionTradeFormModel From(OptionTrade t) => new()
+        {
+            Symbol = t.Symbol,
+            TradeDateTime = t.TradeDateTime,
+            Quantity = Math.Abs(t.Quantity),
+            TradePrice = t.TradePrice,
+            Currency = t.Currency,
+            CommissionFee = t.CommissionFee,
+            Code = t.Code,
+            Notes = t.Notes,
+        };
+
+        // Long-only convention (v1): Open = buy (+qty), Close = sell (-qty).
+        private int SignedQuantity => Code == OptionTradeCode.Close ? -Math.Abs(Quantity) : Math.Abs(Quantity);
+
+        public OptionTrade ToTrade(Guid companyId) => new()
+        {
+            CompanyId = companyId,
+            Symbol = Symbol.Trim(),
+            TradeDateTime = TradeDateTime,
+            Quantity = SignedQuantity,
+            TradePrice = TradePrice,
+            Currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.ToUpperInvariant(),
+            CommissionFee = CommissionFee,
+            Code = Code,
+            Notes = string.IsNullOrWhiteSpace(Notes) ? null : Notes,
+        };
+
+        public void ApplyTo(OptionTrade t)
+        {
+            t.Symbol = Symbol.Trim();
+            t.TradeDateTime = TradeDateTime;
+            t.Quantity = SignedQuantity;
+            t.TradePrice = TradePrice;
+            t.Currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.ToUpperInvariant();
+            t.CommissionFee = CommissionFee;
+            t.Code = Code;
+            t.Notes = string.IsNullOrWhiteSpace(Notes) ? null : Notes;
+        }
+    }
+}

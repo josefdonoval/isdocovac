@@ -1,0 +1,305 @@
+@page "/investments/import"
+@using System.Globalization
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers.Investments
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Investments
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IOptionTradeProvider TradeProvider
+@inject IOptionTradeCalculationService TradeCalc
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>Import obchodů (CSV/TSV)</PageTitle>
+
+<div class="container py-4" style="max-width: 1400px;">
+    <h1>Import obchodů</h1>
+    <p class="text-muted">
+        Vlož řádky oddělené tabulátorem (přímo z brokerova exportu).
+        Header je volitelný — když ho vložíš, automaticky se přeskočí.
+        CNB kurzy se vždy dotahují čerstvě (vstupní hodnoty kurzů a CZK ignorujeme).
+    </p>
+
+    <div class="alert alert-warning small">
+        Duplicity nejsou detekovány — pokud vložíš stejné řádky podruhé, založí se znovu. Před importem ověř.
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(statusSuccess ? "alert-success" : "alert-danger")">@statusMessage</div>
+    }
+
+    <div class="mb-3">
+        <label class="form-label">Vstupní data (TSV)</label>
+        <textarea class="form-control font-monospace" rows="8" @bind="rawInput" @bind:event="oninput"
+                  placeholder="Symbol&#9;Date/Time&#9;Quantity&#9;T.Price&#9;Proceeds&#9;Comm/Fee&#9;Basis&#9;Realized P/L&#9;Code&#9;..."></textarea>
+        <div class="form-text">Sloupce v očekávaném pořadí: Symbol, Date/Time, Quantity, T.Price, Proceeds, Comm/Fee, Basis, Realized P/L, Code, … (ostatní se ignorují).</div>
+    </div>
+
+    <div class="d-flex gap-2 mb-3">
+        <button type="button" class="btn btn-outline-secondary" @onclick="ParseAsync" disabled="@busy">Náhled</button>
+        <button type="button" class="btn btn-primary" @onclick="ImportAsync" disabled="@(busy || preview == null || preview.Count == 0 || preview.Any(p => p.Error != null))">
+            @(busy ? "Importuji…" : $"Importovat ({preview?.Count(p => p.Error == null) ?? 0})")
+        </button>
+        <a class="btn btn-outline-secondary" href="/investments">Zpět</a>
+    </div>
+
+    @if (preview != null && preview.Count > 0)
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered small align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Symbol</th>
+                        <th>Date/Time</th>
+                        <th class="text-end">Qty</th>
+                        <th class="text-end">T.Price</th>
+                        <th class="text-end">Comm</th>
+                        <th>Code</th>
+                        <th class="text-end">Proceeds USD</th>
+                        <th class="text-end">Basis USD</th>
+                        <th>CNB date</th>
+                        <th class="text-end">USD/CZK</th>
+                        <th class="text-end">Basis CZK</th>
+                        <th>Stav</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int i = 0; i < preview.Count; i++)
+                    {
+                        var row = preview[i];
+                        <tr class="@(row.Error != null ? "table-danger" : "")">
+                            <td>@(i + 1)</td>
+                            <td>@row.Symbol</td>
+                            <td>@row.TradeDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td class="text-end">@row.Quantity</td>
+                            <td class="text-end">@FmtPrice(row.TradePrice)</td>
+                            <td class="text-end">@Fmt(row.CommissionFee)</td>
+                            <td>@(row.Code == OptionTradeCode.Open ? "O" : "C")</td>
+                            <td class="text-end">@(row.Trade != null ? Fmt(row.Trade.Proceeds) : "—")</td>
+                            <td class="text-end">@(row.Trade != null ? Fmt(row.Trade.Basis) : "—")</td>
+                            <td>@(row.Trade != null ? row.Trade.CnbDate.ToString("yyyy-MM-dd") : "—")</td>
+                            <td class="text-end">@(row.Trade != null ? FmtRate(row.Trade.FxRate) : "—")</td>
+                            <td class="text-end">@(row.Trade != null ? Fmt(row.Trade.BasisCzk) : "—")</td>
+                            <td>@(row.Error ?? "OK")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private string rawInput = string.Empty;
+    private List<ImportRow>? preview;
+    private bool busy;
+    private string? statusMessage;
+    private bool statusSuccess;
+    private Guid companyId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        companyId = active.Value;
+    }
+
+    private async Task ParseAsync()
+    {
+        busy = true;
+        statusMessage = null;
+        preview = null;
+        try
+        {
+            var rows = ParseRaw(rawInput);
+            foreach (var row in rows)
+            {
+                if (row.Error != null) continue;
+                try
+                {
+                    row.Trade = new OptionTrade
+                    {
+                        CompanyId = companyId,
+                        Symbol = row.Symbol,
+                        TradeDateTime = row.TradeDateTime,
+                        Quantity = row.Quantity,
+                        TradePrice = row.TradePrice,
+                        Currency = "USD",
+                        CommissionFee = row.CommissionFee,
+                        Code = row.Code,
+                    };
+                    await TradeCalc.PrepareAsync(row.Trade);
+                }
+                catch (Exception ex)
+                {
+                    row.Error = $"FX/calc chyba: {ex.Message}";
+                }
+            }
+            preview = rows;
+            var ok = rows.Count(r => r.Error == null);
+            statusSuccess = true;
+            statusMessage = $"Načteno {rows.Count} řádků, OK: {ok}, chyby: {rows.Count - ok}.";
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba parsování: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (preview == null) return;
+        busy = true;
+        statusMessage = null;
+        try
+        {
+            var toInsert = preview
+                .Where(r => r.Error == null && r.Trade != null)
+                .Select(r => r.Trade!)
+                .ToList();
+
+            // Convert TradeDateTime to UTC just before save; PrepareAsync already
+            // derived CnbDate from the local-kind value. Npgsql refuses Local/Unspecified
+            // for `timestamp with time zone`.
+            foreach (var t in toInsert)
+            {
+                t.TradeDateTime = ToUtc(t.TradeDateTime);
+            }
+
+            if (toInsert.Count == 0)
+            {
+                statusSuccess = false;
+                statusMessage = "Žádné platné řádky k importu.";
+                return;
+            }
+
+            await TradeProvider.CreateBulkAsync(toInsert);
+
+            var symbols = toInsert.Select(t => t.Symbol).Distinct().ToList();
+            foreach (var s in symbols)
+            {
+                await TradeCalc.RecomputeMatchingAsync(companyId, s);
+            }
+
+            Nav.NavigateTo("/investments");
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba importu: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static List<ImportRow> ParseRaw(string raw)
+    {
+        var result = new List<ImportRow>();
+        if (string.IsNullOrWhiteSpace(raw)) return result;
+
+        var lines = raw.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("Symbol", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var cells = trimmed.Split('\t');
+            if (cells.Length < 9)
+            {
+                result.Add(new ImportRow { Error = $"Řádek má {cells.Length} sloupců, očekáváno alespoň 9." });
+                continue;
+            }
+
+            try
+            {
+                var symbol = cells[0].Trim();
+                var dateStr = cells[1].Trim();
+                if (!TryParseDate(dateStr, out var dt))
+                {
+                    result.Add(new ImportRow { Symbol = symbol, Error = $"Neplatné Date/Time: '{dateStr}'." });
+                    continue;
+                }
+
+                var qty = int.Parse(cells[2].Trim(), CultureInfo.InvariantCulture);
+                var price = ParseDecimal(cells[3]);
+                var commission = ParseDecimal(cells[5]);
+                var codeCell = cells[8].Trim().ToUpperInvariant();
+                var code = codeCell switch
+                {
+                    "O" => OptionTradeCode.Open,
+                    "C" => OptionTradeCode.Close,
+                    _ => throw new FormatException($"Neznámý Code '{codeCell}' (očekáváno O nebo C).")
+                };
+
+                result.Add(new ImportRow
+                {
+                    Symbol = symbol,
+                    TradeDateTime = dt,
+                    Quantity = qty,
+                    TradePrice = price,
+                    CommissionFee = Math.Abs(commission),
+                    Code = code,
+                });
+            }
+            catch (Exception ex)
+            {
+                result.Add(new ImportRow { Error = $"Parse chyba: {ex.Message}" });
+            }
+        }
+        return result;
+    }
+
+    private static bool TryParseDate(string s, out DateTime dt)
+    {
+        if (DateTime.TryParseExact(s, new[] { "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd" },
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+            return true;
+        return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt);
+    }
+
+    private static decimal ParseDecimal(string s)
+    {
+        var trimmed = s.Trim().Replace(",", ".");
+        return decimal.Parse(trimmed, NumberStyles.Any, CultureInfo.InvariantCulture);
+    }
+
+    private static string Fmt(decimal v) => v.ToString("N2", CultureInfo.InvariantCulture);
+    private static string FmtPrice(decimal v) => v.ToString("0.######", CultureInfo.InvariantCulture);
+    private static string FmtRate(decimal v) => v.ToString("0.000", CultureInfo.InvariantCulture);
+
+    private static DateTime ToUtc(DateTime dt) => dt.Kind switch
+    {
+        DateTimeKind.Utc => dt,
+        DateTimeKind.Local => dt.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(dt, DateTimeKind.Local).ToUniversalTime(),
+    };
+
+    private class ImportRow
+    {
+        public string Symbol { get; set; } = string.Empty;
+        public DateTime TradeDateTime { get; set; }
+        public int Quantity { get; set; }
+        public decimal TradePrice { get; set; }
+        public decimal CommissionFee { get; set; }
+        public OptionTradeCode Code { get; set; }
+        public OptionTrade? Trade { get; set; }
+        public string? Error { get; set; }
+    }
+}

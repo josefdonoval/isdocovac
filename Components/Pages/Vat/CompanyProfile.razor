@@ -167,6 +167,15 @@
                         <option value="@VatPeriod.Quarterly">Čtvrtletní</option>
                     </InputSelect>
                 </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Reportovací měna *</label>
+                    <InputSelect class="form-select" @bind-Value="model.PreferredCurrency">
+                        <option value="CZK">CZK — Česká koruna</option>
+                        <option value="EUR">EUR — Euro</option>
+                        <option value="USD">USD — US Dollar</option>
+                    </InputSelect>
+                    <div class="form-text">Měna pro reporting (např. přepočet investičních P/L). CNB poskytuje jen kurzy do CZK.</div>
+                </div>
             </div>
 
             <div class="d-flex gap-2 mt-4">
@@ -264,6 +273,7 @@
         public string? OkecCode { get; set; }
         public string? DataBoxId { get; set; }
         public VatPeriod VatPeriod { get; set; } = VatPeriod.Monthly;
+        [Required] public string PreferredCurrency { get; set; } = "CZK";
 
         public static CompanyFormModel From(Company c) => new()
         {
@@ -288,6 +298,7 @@
             OkecCode = c.OkecCode,
             DataBoxId = c.DataBoxId,
             VatPeriod = c.VatPeriod,
+            PreferredCurrency = string.IsNullOrWhiteSpace(c.PreferredCurrency) ? "CZK" : c.PreferredCurrency,
         };
 
         public void ApplyTo(Company c)
@@ -313,6 +324,7 @@
             c.OkecCode = OkecCode;
             c.DataBoxId = DataBoxId;
             c.VatPeriod = VatPeriod;
+            c.PreferredCurrency = string.IsNullOrWhiteSpace(PreferredCurrency) ? "CZK" : PreferredCurrency.ToUpperInvariant();
         }
     }
 }

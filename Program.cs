@@ -9,6 +9,8 @@ using Isdocovac.Services.Fx;
 using Isdocovac.Services.ISDOC;
 using Isdocovac.Services.Vat;
 using Isdocovac.Providers.Fx;
+using Isdocovac.Providers.Investments;
+using Isdocovac.Services.Investments;
 using Isdocovac.Services.Claude;
 using Isdocovac.Services.Ares;
 using Isdocovac.Services.CodeLists;
@@ -129,7 +131,29 @@ builder.Services.AddScoped<IVatCalculationService, VatCalculationService>();
 builder.Services.AddScoped<IDphXmlGeneratorService, DphXmlGeneratorService>();
 builder.Services.AddScoped<IKhXmlGeneratorService, KhXmlGeneratorService>();
 
+// Investments
+builder.Services.AddScoped<IOptionTradeProvider, OptionTradeProvider>();
+builder.Services.AddScoped<IOptionTradeCalculationService, OptionTradeCalculationService>();
+
 var app = builder.Build();
+
+// One log line per HTTP request: method, path, status, elapsed, plus user/session enrichment.
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+    options.EnrichDiagnosticContext = (diag, http) =>
+    {
+        diag.Set("RequestHost", http.Request.Host.Value ?? string.Empty);
+        diag.Set("RequestScheme", http.Request.Scheme);
+        diag.Set("UserAgent", http.Request.Headers.UserAgent.ToString());
+        if (http.User?.Identity?.IsAuthenticated == true)
+        {
+            diag.Set("UserName", http.User.Identity.Name ?? string.Empty);
+            var uid = http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(uid)) diag.Set("UserId", uid);
+        }
+    };
+});
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

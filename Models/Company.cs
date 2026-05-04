@@ -75,6 +75,9 @@ public class Company
     [Required]
     public VatPeriod VatPeriod { get; set; } = VatPeriod.Monthly;
 
+    [Required, MaxLength(3)]
+    public string PreferredCurrency { get; set; } = "CZK";
+
     [Required]
     public bool IsActive { get; set; } = true;
 

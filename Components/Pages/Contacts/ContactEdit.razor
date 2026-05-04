@@ -63,10 +63,10 @@
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Typ osoby</label>
-                    <select class="form-select" @bind="model.IsLegalEntity">
+                    <InputSelect class="form-select" @bind-Value="model.IsLegalEntity">
                         <option value="true">Právnická osoba</option>
                         <option value="false">Fyzická osoba</option>
-                    </select>
+                    </InputSelect>
                 </div>
             </div>
 

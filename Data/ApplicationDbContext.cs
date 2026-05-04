@@ -41,6 +41,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Contact> Contacts { get; set; }
     public DbSet<FxRate> FxRates { get; set; }
 
+    // Investments
+    public DbSet<OptionTrade> OptionTrades { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -218,6 +221,17 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<FxRate>(entity =>
         {
             entity.HasIndex(e => new { e.Date, e.Currency }).IsUnique();
+        });
+
+        // OptionTrade configuration
+        modelBuilder.Entity<OptionTrade>(entity =>
+        {
+            entity.HasIndex(e => new { e.CompanyId, e.TradeDateTime });
+            entity.HasIndex(e => new { e.CompanyId, e.Symbol });
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // FakturoidInvoice configuration

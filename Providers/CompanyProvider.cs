@@ -79,6 +79,9 @@ public class CompanyProvider : ICompanyProvider
         existing.OkecCode = company.OkecCode;
         existing.DataBoxId = company.DataBoxId;
         existing.VatPeriod = company.VatPeriod;
+        existing.PreferredCurrency = string.IsNullOrWhiteSpace(company.PreferredCurrency)
+            ? "CZK"
+            : company.PreferredCurrency.ToUpperInvariant();
         existing.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync();

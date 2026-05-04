@@ -142,6 +142,24 @@ The application uses **Entity Framework Core 9.0** with **PostgreSQL** (Npgsql p
 - `invoice_uploads` table: Stores invoice upload metadata and Azure Blob Storage references
 - `parsed_isdocs` table: Stores parsed invoice data extracted from XML
 
+### DateTime + PostgreSQL (Npgsql) — important gotcha
+
+Npgsql refuses to write `DateTime` values whose `Kind` is `Local` (or `Unspecified`) into PostgreSQL `timestamp with time zone` columns — only `DateTimeKind.Utc` is accepted.
+
+```
+System.ArgumentException: Cannot write DateTime with Kind=Local to PostgreSQL type
+'timestamp with time zone', only UTC is supported.
+```
+
+**Rules when persisting DateTimes:**
+- Server-generated timestamps (`CreatedAt`, `UpdatedAt`, etc.): always `DateTime.UtcNow`. Never `DateTime.Now`.
+- User-entered timestamps (e.g. from `<InputDate Type="DateTimeLocal">`): convert at the boundary before saving. The bound value's `Kind` is `Unspecified`; treat it as the user's local time and convert to UTC: `DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime()`.
+- Defaults shown in forms (e.g. `TradeDateTime = DateTime.Now`) are fine for UI display, but must be normalized to UTC before being passed to a provider/EF.
+- When constructing `DateTime` literals for queries (e.g. year-range filters), use the explicit ctor: `new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc)`.
+- `DateOnly` columns are unaffected by `Kind`; they map to `date` and are stored as-is.
+
+If you need to derive a `DateOnly` from a wall-clock `DateTime` the user entered (e.g. for FX rate lookup), do it **before** the UTC conversion — otherwise a midnight-local time slips into the previous calendar day in UTC.
+
 ### Database Migrations
 
 ```bash
