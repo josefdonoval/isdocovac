@@ -5,11 +5,13 @@
 @using Isdocovac.Providers
 @using Isdocovac.Services.Authentication
 @using Isdocovac.Services.CodeLists
+@using Isdocovac.Services.Investments
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inject ICompanyProvider CompanyProvider
 @inject ICurrentCompanyAccessor CurrentCompanyAccessor
 @inject ICodeListService CodeLists
+@inject IShareCalculationService ShareCalc
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
@@ -176,6 +178,14 @@
                     </InputSelect>
                     <div class="form-text">Měna pro reporting (např. přepočet investičních P/L). CNB poskytuje jen kurzy do CZK.</div>
                 </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">FIFO scope pro akcie *</label>
+                    <InputSelect class="form-select" @bind-Value="model.ShareFifoScope">
+                        <option value="@ShareFifoScope.Global">Globálně per Symbol (doporučeno)</option>
+                        <option value="@ShareFifoScope.PerBroker">Per (Symbol, Broker)</option>
+                    </InputSelect>
+                    <div class="form-text">Jak párovat Sell vs. Buy při výpočtu realizovaného P/L. Změna spustí přepočet všech symbolů.</div>
+                </div>
             </div>
 
             <div class="d-flex gap-2 mt-4">
@@ -219,8 +229,15 @@
         try
         {
             if (company == null) return;
+            var previousScope = company.ShareFifoScope;
             model!.ApplyTo(company);
             await CompanyProvider.UpdateAsync(company);
+
+            if (previousScope != company.ShareFifoScope)
+            {
+                await ShareCalc.RecomputeAllSymbolsAsync(company.Id);
+            }
+
             statusSuccess = true;
             statusMessage = "Uloženo.";
             if (!string.IsNullOrEmpty(returnUrl))
@@ -274,6 +291,7 @@
         public string? DataBoxId { get; set; }
         public VatPeriod VatPeriod { get; set; } = VatPeriod.Monthly;
         [Required] public string PreferredCurrency { get; set; } = "CZK";
+        [Required] public ShareFifoScope ShareFifoScope { get; set; } = ShareFifoScope.Global;
 
         public static CompanyFormModel From(Company c) => new()
         {
@@ -299,6 +317,7 @@
             DataBoxId = c.DataBoxId,
             VatPeriod = c.VatPeriod,
             PreferredCurrency = string.IsNullOrWhiteSpace(c.PreferredCurrency) ? "CZK" : c.PreferredCurrency,
+            ShareFifoScope = c.ShareFifoScope,
         };
 
         public void ApplyTo(Company c)
@@ -325,6 +344,7 @@
             c.DataBoxId = DataBoxId;
             c.VatPeriod = VatPeriod;
             c.PreferredCurrency = string.IsNullOrWhiteSpace(PreferredCurrency) ? "CZK" : PreferredCurrency.ToUpperInvariant();
+            c.ShareFifoScope = ShareFifoScope;
         }
     }
 }

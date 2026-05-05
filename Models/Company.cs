@@ -79,6 +79,9 @@ public class Company
     public string PreferredCurrency { get; set; } = "CZK";
 
     [Required]
+    public ShareFifoScope ShareFifoScope { get; set; } = ShareFifoScope.Global;
+
+    [Required]
     public bool IsActive { get; set; } = true;
 
     [Required]

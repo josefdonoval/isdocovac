@@ -43,6 +43,8 @@ public class ApplicationDbContext : DbContext
 
     // Investments
     public DbSet<OptionTrade> OptionTrades { get; set; }
+    public DbSet<Share> Shares { get; set; }
+    public DbSet<ShareQuote> ShareQuotes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -228,6 +230,27 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasIndex(e => new { e.CompanyId, e.TradeDateTime });
             entity.HasIndex(e => new { e.CompanyId, e.Symbol });
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Share configuration
+        modelBuilder.Entity<Share>(entity =>
+        {
+            entity.HasIndex(e => new { e.CompanyId, e.TradeDateTime });
+            entity.HasIndex(e => new { e.CompanyId, e.Symbol });
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ShareQuote configuration
+        modelBuilder.Entity<ShareQuote>(entity =>
+        {
+            entity.HasIndex(e => new { e.CompanyId, e.Symbol }).IsUnique();
             entity.HasOne(e => e.Company)
                 .WithMany()
                 .HasForeignKey(e => e.CompanyId)

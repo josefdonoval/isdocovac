@@ -1,0 +1,480 @@
+@page "/shares/new"
+@page "/shares/{Id:guid}"
+@using System.ComponentModel.DataAnnotations
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers.Investments
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Investments
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IShareProvider ShareProvider
+@inject IShareQuoteProvider QuoteProvider
+@inject IShareCalculationService ShareCalc
+@inject ISecurityLookupService SecurityLookup
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>@(IsNew ? "Nový obchod akcií" : "Upravit obchod akcií")</PageTitle>
+
+<div class="container py-4" style="max-width: 800px;">
+    <h1>@(IsNew ? "Nový obchod akcií" : "Upravit obchod akcií")</h1>
+    <p class="text-muted small">
+        Po uložení proběhne FIFO matching pro daný Symbol a aktualizují se Realized P/L hodnoty.
+        CNB kurz se dotahuje automaticky.
+    </p>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert @(statusSuccess ? "alert-success" : "alert-danger")">@statusMessage</div>
+    }
+
+    @if (model != null)
+    {
+        <EditForm Model="model" FormName="share-edit" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <div class="row">
+                <div class="col-md-5 mb-3">
+                    <label class="form-label">ISIN</label>
+                    <div class="input-group">
+                        <InputText class="form-control font-monospace" @bind-Value="model.Isin" placeholder="US0378331005" maxlength="12" />
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ResolveIsinAsync" disabled="@isinBusy">
+                            @(isinBusy ? "Hledám…" : "Načíst název")
+                        </button>
+                    </div>
+                    <div class="form-text">12 znaků (ISO 6166). Po kliknutí dotáhne ticker + oficiální název z OpenFIGI.</div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Symbol *</label>
+                    <InputText class="form-control" @bind-Value="model.Symbol" @bind-Value:after="OnSymbolChanged" placeholder="AAPL" />
+                    <div class="form-text">Burzovní ticker (pro Yahoo quote).</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Code *</label>
+                    <InputSelect class="form-select" @bind-Value="model.Code" @bind-Value:after="OnCodeChanged">
+                        <option value="@ShareTradeCode.Buy">B — Buy</option>
+                        <option value="@ShareTradeCode.Sell">S — Sell</option>
+                    </InputSelect>
+                    @if (model.Code == ShareTradeCode.Sell && !string.IsNullOrWhiteSpace(model.Symbol))
+                    {
+                        if (availableForSell > 0)
+                        {
+                            <div class="form-text">Aktuálně vlastníš <strong>@FmtQty(availableForSell)</strong> ks @model.Symbol.</div>
+                        }
+                        else
+                        {
+                            <div class="form-text text-danger">Nevlastníš žádné kusy @model.Symbol — krátké pozice nejsou podporované.</div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Název titulu</label>
+                <InputText class="form-control" @bind-Value="model.Name" placeholder="APPLE INC" />
+                <div class="form-text">Vyplní se automaticky z ISIN lookupu, lze upravit ručně.</div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Date/Time *</label>
+                    <InputDate Type="InputDateType.DateTimeLocal" class="form-control" @bind-Value="model.TradeDateTime" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Quantity *</label>
+                    <InputNumber class="form-control" @bind-Value="model.Quantity" step="0.000001" />
+                    <div class="form-text">Počet kusů (vždy kladné, lze zlomky). Sign se odvodí z Code.</div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">T. Price *</label>
+                    <InputNumber class="form-control" @bind-Value="model.TradePrice" step="0.000001" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Currency *</label>
+                    <InputSelect class="form-select" @bind-Value="model.Currency">
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                        <option value="CZK">CZK</option>
+                    </InputSelect>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Broker *</label>
+                    <InputSelect class="form-select" @bind-Value="model.Broker" @bind-Value:after="OnBrokerChanged">
+                        @foreach (var b in (Broker[])Enum.GetValues(typeof(Broker)))
+                        {
+                            <option value="@b">@BrokerLabel.For(b)</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Comm/Fee *</label>
+                    <InputNumber class="form-control" @bind-Value="model.CommissionFee" step="0.01" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                <InputTextArea class="form-control" rows="2" @bind-Value="model.Notes" />
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+                <button type="button" class="btn btn-outline-secondary" @onclick="PreviewAsync" disabled="@busy">
+                    Spočítat náhled
+                </button>
+                <button type="submit" class="btn btn-primary" disabled="@busy">
+                    @(busy ? "Ukládám…" : "Uložit")
+                </button>
+                <a class="btn btn-outline-secondary" href="/shares">Zpět</a>
+            </div>
+        </EditForm>
+
+        @if (preview != null)
+        {
+            <div class="card mb-3">
+                <div class="card-header">Náhled výpočtu</div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr><th>Proceeds (@preview.Currency)</th><td class="text-end">@Fmt(preview.Proceeds)</td></tr>
+                            <tr><th>Comm/Fee (@preview.Currency)</th><td class="text-end">@Fmt(preview.CommissionFee)</td></tr>
+                            <tr><th>Basis (@preview.Currency)</th><td class="text-end">@Fmt(preview.Basis)</td></tr>
+                            <tr><th>CNB date</th><td class="text-end">@preview.CnbDate.ToString("yyyy-MM-dd")</td></tr>
+                            <tr><th>@preview.Currency/CZK kurz</th><td class="text-end">@FmtRate(preview.FxRate) (amount @preview.FxAmount)</td></tr>
+                            <tr><th>Proceeds CZK</th><td class="text-end">@Fmt(preview.ProceedsCzk)</td></tr>
+                            <tr><th>Comm/Fee CZK</th><td class="text-end">@Fmt(preview.CommissionFeeCzk)</td></tr>
+                            <tr><th>Basis CZK</th><td class="text-end">@Fmt(preview.BasisCzk)</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="form-text">
+                        Realized P/L se počítá až při ukládání (FIFO matching proti existujícím Buy obchodům).
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool IsNew => Id == null;
+
+    private Guid companyId;
+    private ShareFormModel? model;
+    private Share? preview;
+    private bool busy;
+    private bool isinBusy;
+    private string? statusMessage;
+    private bool statusSuccess;
+    private string? originalSymbol;
+    private decimal availableForSell;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        companyId = active.Value;
+
+        if (IsNew)
+        {
+            model = new ShareFormModel
+            {
+                TradeDateTime = DateTime.Now,
+                Currency = "USD",
+                Code = ShareTradeCode.Buy,
+                Broker = Broker.InteractiveBrokers,
+            };
+        }
+        else
+        {
+            var existing = await ShareProvider.GetAsync(Id!.Value);
+            if (existing == null || existing.CompanyId != companyId)
+            {
+                Nav.NavigateTo("/shares");
+                return;
+            }
+            originalSymbol = existing.Symbol;
+            model = ShareFormModel.From(existing);
+        }
+
+        await RecomputeAvailableAsync();
+    }
+
+    private async Task OnSymbolChanged() => await RecomputeAvailableAsync();
+    private async Task OnBrokerChanged() => await RecomputeAvailableAsync();
+
+    private async Task OnCodeChanged()
+    {
+        await RecomputeAvailableAsync();
+        // When user flips to Sell with empty quantity, drop the available qty in — they probably
+        // want to close the whole position. They can still edit it down. Keeps Buy untouched.
+        if (model != null && model.Code == ShareTradeCode.Sell && model.Quantity == 0m && availableForSell > 0m)
+        {
+            model.Quantity = availableForSell;
+        }
+    }
+
+    private async Task RecomputeAvailableAsync()
+    {
+        if (model == null || string.IsNullOrWhiteSpace(model.Symbol))
+        {
+            availableForSell = 0m;
+            return;
+        }
+        availableForSell = await ShareCalc.GetAvailableSellQuantityAsync(
+            companyId, model.Symbol.Trim(), model.Broker, IsNew ? null : Id);
+    }
+
+    private async Task ResolveIsinAsync()
+    {
+        if (model == null) return;
+        var isin = model.Isin?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(isin))
+        {
+            statusSuccess = false;
+            statusMessage = "Zadej ISIN.";
+            return;
+        }
+        if (!SecurityLookup.IsValidIsin(isin))
+        {
+            statusSuccess = false;
+            statusMessage = $"„{isin}" + "\" není platný ISIN (12 znaků, ISO 6166 + checksum).";
+            return;
+        }
+
+        isinBusy = true;
+        statusMessage = null;
+        try
+        {
+            model.Isin = isin;
+            var result = await SecurityLookup.LookupByIsinAsync(isin);
+            if (result == null)
+            {
+                statusSuccess = false;
+                statusMessage = $"Pro ISIN {isin} se nepodařilo dohledat název.";
+                return;
+            }
+
+            model.Name = result.Name ?? model.Name;
+            if (string.IsNullOrWhiteSpace(model.Symbol) && !string.IsNullOrWhiteSpace(result.Ticker))
+            {
+                model.Symbol = result.Ticker;
+            }
+
+            // Cache the name on the quote row so it shows up in lists even before a price refresh.
+            if (!string.IsNullOrWhiteSpace(model.Symbol) && !string.IsNullOrWhiteSpace(result.Name))
+            {
+                var existing = await QuoteProvider.GetAsync(companyId, model.Symbol);
+                var quote = existing ?? new Isdocovac.Models.ShareQuote
+                {
+                    CompanyId = companyId,
+                    Symbol = model.Symbol,
+                    Currency = string.IsNullOrWhiteSpace(model.Currency) ? "USD" : model.Currency.ToUpperInvariant(),
+                    LastPrice = 0m,
+                    FetchedAt = DateTime.UtcNow,
+                    Source = "openfigi",
+                };
+                quote.Name = result.Name;
+                await QuoteProvider.UpsertAsync(quote);
+            }
+
+            statusSuccess = true;
+            statusMessage = $"Nalezeno: {result.Name} ({result.Ticker ?? "—"}, {result.SecurityType ?? "?"}, {result.ExchangeCode ?? "?"}).";
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba lookupu: {ex.Message}";
+        }
+        finally
+        {
+            isinBusy = false;
+        }
+    }
+
+    private async Task PreviewAsync()
+    {
+        if (model == null) return;
+        busy = true;
+        statusMessage = null;
+        try
+        {
+            var t = model.ToTrade(companyId);
+            await ShareCalc.PrepareAsync(t);
+            preview = t;
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba výpočtu: {ex.Message}";
+            preview = null;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (model == null) return;
+
+        // Refuse Sell that would push the symbol's net qty below zero (no shorts in v1).
+        // Re-check fresh from DB rather than trusting `availableForSell`, since the user could
+        // have left the form open while another trade landed.
+        if (model.Code == ShareTradeCode.Sell)
+        {
+            var available = await ShareCalc.GetAvailableSellQuantityAsync(
+                companyId, model.Symbol.Trim(), model.Broker, IsNew ? null : Id);
+            if (model.Quantity > available)
+            {
+                statusSuccess = false;
+                statusMessage = available <= 0m
+                    ? $"Nevlastníš žádné kusy {model.Symbol} — krátké pozice nejsou podporované."
+                    : $"Nemůžeš prodat {FmtQty(model.Quantity)} ks {model.Symbol} — k dispozici je jen {FmtQty(available)} ks.";
+                availableForSell = available;
+                return;
+            }
+        }
+
+        busy = true;
+        statusMessage = null;
+        try
+        {
+            var trade = IsNew
+                ? model.ToTrade(companyId)
+                : MergeIntoExisting(await ShareProvider.GetAsync(Id!.Value)
+                    ?? throw new InvalidOperationException("Share not found"));
+
+            // PrepareAsync derives CnbDate from TradeDateTime — keep user-local kind here
+            // so a midnight-local time doesn't slip into the previous UTC day.
+            await ShareCalc.PrepareAsync(trade);
+
+            // Npgsql requires Kind=Utc for `timestamp with time zone` columns.
+            trade.TradeDateTime = ToUtc(trade.TradeDateTime);
+
+            if (IsNew)
+            {
+                trade = await ShareProvider.CreateAsync(trade);
+            }
+            else
+            {
+                trade = await ShareProvider.UpdateAsync(trade);
+            }
+
+            await ShareCalc.RecomputeMatchingAsync(companyId, trade.Symbol);
+            if (!IsNew && originalSymbol != null && originalSymbol != trade.Symbol)
+            {
+                await ShareCalc.RecomputeMatchingAsync(companyId, originalSymbol);
+            }
+
+            Nav.NavigateTo("/shares");
+        }
+        catch (Exception ex)
+        {
+            statusSuccess = false;
+            statusMessage = $"Chyba: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private Share MergeIntoExisting(Share existing)
+    {
+        model!.ApplyTo(existing);
+        return existing;
+    }
+
+    private static string Fmt(decimal v) => v.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtRate(decimal v) => v.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtQty(decimal v) => v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static DateTime ToUtc(DateTime dt) => dt.Kind switch
+    {
+        DateTimeKind.Utc => dt,
+        DateTimeKind.Local => dt.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(dt, DateTimeKind.Local).ToUniversalTime(),
+    };
+
+    public class ShareFormModel
+    {
+        [Required, MaxLength(32)] public string Symbol { get; set; } = string.Empty;
+        [MaxLength(12)] public string? Isin { get; set; }
+        [MaxLength(200)] public string? Name { get; set; }
+        [Required] public DateTime TradeDateTime { get; set; } = DateTime.Now;
+        // Numeric overload of Range: bounds are doubles compiled into the attribute, so there's no
+        // culture-dependent string parsing on every keystroke (which crashed the circuit in cs-CZ).
+        // Decimal value is converted to double via Convert.ChangeType for the comparison — fine for
+        // a quantity check that just enforces "positive".
+        [Required, Range(0.000001, double.MaxValue, ErrorMessage = "Zadej kladný počet kusů.")]
+        public decimal Quantity { get; set; }
+        [Required] public decimal TradePrice { get; set; }
+        [Required, MaxLength(3)] public string Currency { get; set; } = "USD";
+        [Required] public Broker Broker { get; set; } = Broker.InteractiveBrokers;
+        [Range(0, double.MaxValue)] public decimal CommissionFee { get; set; }
+        [Required] public ShareTradeCode Code { get; set; } = ShareTradeCode.Buy;
+        [MaxLength(500)] public string? Notes { get; set; }
+
+        public static ShareFormModel From(Share t) => new()
+        {
+            Symbol = t.Symbol,
+            Isin = t.Isin,
+            Name = t.Name,
+            TradeDateTime = t.TradeDateTime,
+            Quantity = Math.Abs(t.Quantity),
+            TradePrice = t.TradePrice,
+            Currency = t.Currency,
+            Broker = t.Broker,
+            CommissionFee = t.CommissionFee,
+            Code = t.Code,
+            Notes = t.Notes,
+        };
+
+        // Buy = +qty, Sell = −qty.
+        private decimal SignedQuantity => Code == ShareTradeCode.Sell ? -Math.Abs(Quantity) : Math.Abs(Quantity);
+
+        public Share ToTrade(Guid companyId) => new()
+        {
+            CompanyId = companyId,
+            Symbol = Symbol.Trim(),
+            Isin = string.IsNullOrWhiteSpace(Isin) ? null : Isin.Trim().ToUpperInvariant(),
+            Name = string.IsNullOrWhiteSpace(Name) ? null : Name.Trim(),
+            TradeDateTime = TradeDateTime,
+            Quantity = SignedQuantity,
+            TradePrice = TradePrice,
+            Currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.ToUpperInvariant(),
+            Broker = Broker,
+            CommissionFee = CommissionFee,
+            Code = Code,
+            Notes = string.IsNullOrWhiteSpace(Notes) ? null : Notes,
+        };
+
+        public void ApplyTo(Share t)
+        {
+            t.Symbol = Symbol.Trim();
+            t.Isin = string.IsNullOrWhiteSpace(Isin) ? null : Isin.Trim().ToUpperInvariant();
+            t.Name = string.IsNullOrWhiteSpace(Name) ? null : Name.Trim();
+            t.TradeDateTime = TradeDateTime;
+            t.Quantity = SignedQuantity;
+            t.TradePrice = TradePrice;
+            t.Currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.ToUpperInvariant();
+            t.Broker = Broker;
+            t.CommissionFee = CommissionFee;
+            t.Code = Code;
+            t.Notes = string.IsNullOrWhiteSpace(Notes) ? null : Notes;
+        }
+    }
+}

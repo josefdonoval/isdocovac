@@ -1,0 +1,407 @@
+@page "/shares"
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers.Investments
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Investments
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IShareProvider ShareProvider
+@inject IShareQuoteProvider QuoteProvider
+@inject IShareCalculationService ShareCalc
+@inject IShareQuoteService QuoteService
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>Investice — Akcie</PageTitle>
+
+<div class="container-fluid py-4" style="max-width: 1600px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="m-0">Investice — Akcie</h1>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="/shares/import">Import CSV</a>
+            <a class="btn btn-primary" href="/shares/new">+ Nový obchod</a>
+        </div>
+    </div>
+
+    @if (statusMessage != null)
+    {
+        <div class="alert alert-info">@statusMessage</div>
+    }
+
+    @* Open positions *@
+    <div class="card mb-4">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Otevřené pozice</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="RefreshAllQuotesAsync" disabled="@quoteBusy">
+                @(quoteBusy ? "Aktualizuji…" : "↻ Aktualizovat všechny ceny")
+            </button>
+        </div>
+        @if (openPositions == null)
+        {
+            <div class="card-body py-3"><span class="text-muted">Načítám…</span></div>
+        }
+        else if (openPositions.Count == 0)
+        {
+            <div class="card-body py-3"><span class="text-muted">Žádné otevřené pozice.</span></div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Název</th>
+                            <th>Broker(y)</th>
+                            <th>Měna</th>
+                            <th class="text-end">Net Qty</th>
+                            <th class="text-end">Avg buy</th>
+                            <th class="text-end">Cost basis (USD)</th>
+                            <th class="text-end">Cost basis CZK</th>
+                            <th class="text-end">Last price</th>
+                            <th>Last update</th>
+                            <th class="text-end">Market value</th>
+                            <th class="text-end">Unrealized P/L</th>
+                            <th class="text-end">P/L %</th>
+                            <th class="text-end">Akce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in openPositions)
+                        {
+                            quotes.TryGetValue(p.Symbol, out var q);
+                            var marketValue = q != null ? q.LastPrice * p.NetQuantity : (decimal?)null;
+                            var pnl = marketValue.HasValue ? marketValue.Value - p.CostBasisUsd : (decimal?)null;
+                            var pnlPct = (pnl.HasValue && p.CostBasisUsd > 0) ? pnl.Value / p.CostBasisUsd * 100m : (decimal?)null;
+                            namesBySymbol.TryGetValue(p.Symbol, out var name);
+                            <tr>
+                                <td class="fw-semibold">@p.Symbol</td>
+                                <td>@(name ?? q?.Name ?? "—")</td>
+                                <td>@string.Join(", ", p.Brokers.Select(BrokerLabel.For))</td>
+                                <td>@p.Currency</td>
+                                <td class="text-end">@FmtQty(p.NetQuantity)</td>
+                                <td class="text-end">@FmtPrice(p.AvgBuyPrice)</td>
+                                <td class="text-end">@Fmt(p.CostBasisUsd)</td>
+                                <td class="text-end">@Fmt(p.CostBasisCzk)</td>
+                                <td class="text-end">@(q != null ? FmtPrice(q.LastPrice) : "—")</td>
+                                <td>@(q != null ? q.FetchedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")</td>
+                                <td class="text-end">@(marketValue.HasValue ? Fmt(marketValue.Value) : "—")</td>
+                                <td class="text-end @PnlClass(pnl)">@(pnl.HasValue ? Fmt(pnl.Value) : "—")</td>
+                                <td class="text-end @PnlClass(pnlPct)">@(pnlPct.HasValue ? FmtPct(pnlPct.Value) : "—")</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => RefreshQuoteAsync(p.Symbol)" disabled="@quoteBusy" title="Aktualizovat cenu">↻</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    @* Year navigation *@
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => ChangeYear(-1)" disabled="@busy">‹</button>
+        <div class="border rounded px-3 py-1 fw-semibold">@year</div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => ChangeYear(1)" disabled="@busy">›</button>
+        @if (availableYears.Count > 0)
+        {
+            <span class="ms-3 small text-muted">
+                Roky s daty: @string.Join(", ", availableYears)
+            </span>
+        }
+    </div>
+
+    @if (trades != null && trades.Count > 0)
+    {
+        <div class="card mb-3">
+            <div class="card-header py-2">Souhrn za rok @year</div>
+            <div class="card-body py-3">
+                <div class="row text-center g-3">
+                    <div class="col-md-4">
+                        <div class="small text-muted text-uppercase">Příjem (income)</div>
+                        <div class="fs-5 fw-semibold text-success">@Fmt(totalIncomeUsd) <span class="text-muted small">USD</span></div>
+                        <div class="fw-semibold text-success">@Fmt(totalIncomeCzk) <span class="text-muted small">CZK</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted text-uppercase">Výdaj (expense)</div>
+                        <div class="fs-5 fw-semibold text-danger">@Fmt(totalExpenseUsd) <span class="text-muted small">USD</span></div>
+                        <div class="fw-semibold text-danger">@Fmt(totalExpenseCzk) <span class="text-muted small">CZK</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted text-uppercase">Realized P/L</div>
+                        <div class="fs-5 fw-semibold @PnlClass(totalPnlUsd)">@Fmt(totalPnlUsd) <span class="text-muted small">USD</span></div>
+                        <div class="fw-semibold @PnlClass(totalPnlCzk)">@Fmt(totalPnlCzk) <span class="text-muted small">CZK</span></div>
+                    </div>
+                </div>
+                <div class="form-text text-center mt-2">
+                    Počítáno z @closedDealCount uzavřených prodejů (Code = S). Otevřené pozice nejsou započteny.
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (trades == null)
+    {
+        <p class="text-muted">Načítám…</p>
+    }
+    else if (trades.Count == 0)
+    {
+        <div class="alert alert-info">
+            Žádné obchody pro rok @year. <a href="/shares/new">Přidat obchod</a>
+            nebo <a href="/shares/import">importovat CSV</a>.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle small">
+                <thead class="table-light">
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Název</th>
+                        <th>Broker</th>
+                        <th>Date/Time</th>
+                        <th class="text-end">Qty</th>
+                        <th class="text-end">T.Price</th>
+                        <th class="text-end">Proceeds</th>
+                        <th class="text-end">Comm/Fee</th>
+                        <th class="text-end">Basis</th>
+                        <th class="text-end text-success">Income</th>
+                        <th class="text-end text-danger">Expense</th>
+                        <th class="text-end">Realized P/L</th>
+                        <th>Code</th>
+                        <th>CNB date</th>
+                        <th class="text-end">FX</th>
+                        <th class="text-end">Proceeds CZK</th>
+                        <th class="text-end">Comm/Fee CZK</th>
+                        <th class="text-end">Basis CZK</th>
+                        <th class="text-end text-success">Income CZK</th>
+                        <th class="text-end text-danger">Expense CZK</th>
+                        <th class="text-end">Realized P/L CZK</th>
+                        <th class="text-end">Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in trades)
+                    {
+                        var ie = IncomeExpense(t);
+                        var rowName = t.Name;
+                        if (string.IsNullOrWhiteSpace(rowName))
+                        {
+                            namesBySymbol.TryGetValue(t.Symbol, out var fallback);
+                            rowName = fallback ?? (quotes.TryGetValue(t.Symbol, out var qn) ? qn.Name : null);
+                        }
+                        <tr>
+                            <td><a href="@($"/shares/{t.Id}")" class="text-decoration-none">@t.Symbol</a></td>
+                            <td>@(rowName ?? "—")</td>
+                            <td>@BrokerLabel.For(t.Broker)</td>
+                            <td>@t.TradeDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td class="text-end">@FmtQty(t.Quantity)</td>
+                            <td class="text-end">@FmtPrice(t.TradePrice)</td>
+                            <td class="text-end">@Fmt(t.Proceeds)</td>
+                            <td class="text-end">@Fmt(t.CommissionFee)</td>
+                            <td class="text-end">@Fmt(t.Basis)</td>
+                            <td class="text-end text-success">@FmtNullable(ie?.IncomeUsd)</td>
+                            <td class="text-end text-danger">@FmtNullable(ie?.ExpenseUsd)</td>
+                            <td class="text-end @PnlClass(t.RealizedPnl)">@FmtNullable(t.RealizedPnl)</td>
+                            <td><span class="badge @CodeBadgeClass(t.Code)">@CodeLabel(t.Code)</span></td>
+                            <td>@t.CnbDate.ToString("yyyy-MM-dd")</td>
+                            <td class="text-end">@FmtRate(t.FxRate)</td>
+                            <td class="text-end">@Fmt(t.ProceedsCzk)</td>
+                            <td class="text-end">@Fmt(t.CommissionFeeCzk)</td>
+                            <td class="text-end">@Fmt(t.BasisCzk)</td>
+                            <td class="text-end text-success">@FmtNullable(ie?.IncomeCzk)</td>
+                            <td class="text-end text-danger">@FmtNullable(ie?.ExpenseCzk)</td>
+                            <td class="text-end @PnlClass(t.RealizedPnlCzk)">@FmtNullable(t.RealizedPnlCzk)</td>
+                            <td class="text-end text-nowrap">
+                                <a class="btn btn-sm btn-outline-secondary" href="@($"/shares/{t.Id}")">Upravit</a>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(t)">Smazat</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="table-light">
+                    <tr class="fw-semibold">
+                        <td colspan="9" class="text-end">Σ za rok:</td>
+                        <td class="text-end text-success">@Fmt(totalIncomeUsd)</td>
+                        <td class="text-end text-danger">@Fmt(totalExpenseUsd)</td>
+                        <td class="text-end @PnlClass(totalPnlUsd)">@Fmt(totalPnlUsd)</td>
+                        <td colspan="6"></td>
+                        <td class="text-end text-success">@Fmt(totalIncomeCzk)</td>
+                        <td class="text-end text-danger">@Fmt(totalExpenseCzk)</td>
+                        <td class="text-end @PnlClass(totalPnlCzk)">@Fmt(totalPnlCzk)</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private int year = DateTime.Now.Year;
+    private bool busy;
+    private bool quoteBusy;
+    private Guid companyId;
+    private List<Share>? trades;
+    private List<int> availableYears = new();
+    private IReadOnlyList<ShareOpenPosition>? openPositions;
+    private Dictionary<string, ShareQuote> quotes = new();
+    private Dictionary<string, string> namesBySymbol = new();
+    private decimal totalPnlUsd;
+    private decimal totalPnlCzk;
+    private decimal totalIncomeUsd;
+    private decimal totalIncomeCzk;
+    private decimal totalExpenseUsd;
+    private decimal totalExpenseCzk;
+    private int closedDealCount;
+    private string? statusMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        companyId = active.Value;
+
+        availableYears = (await ShareProvider.ListYearsAsync(companyId)).ToList();
+        if (availableYears.Count > 0 && !availableYears.Contains(year))
+        {
+            year = availableYears.First();
+        }
+
+        await ReloadOpenPositionsAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        busy = true;
+        try
+        {
+            var list = await ShareProvider.ListByYearAsync(companyId, year);
+            trades = list.ToList();
+            totalPnlUsd = trades.Sum(t => t.RealizedPnl ?? 0m);
+            totalPnlCzk = trades.Sum(t => t.RealizedPnlCzk ?? 0m);
+
+            var ies = trades.Select(IncomeExpense).Where(x => x != null).Select(x => x!.Value).ToList();
+            closedDealCount = ies.Count;
+            totalIncomeUsd = ies.Sum(x => x.IncomeUsd);
+            totalIncomeCzk = ies.Sum(x => x.IncomeCzk);
+            totalExpenseUsd = ies.Sum(x => x.ExpenseUsd);
+            totalExpenseCzk = ies.Sum(x => x.ExpenseCzk);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task ReloadOpenPositionsAsync()
+    {
+        openPositions = await ShareCalc.ComputeOpenPositionsAsync(companyId);
+        var list = await QuoteProvider.ListAsync(companyId);
+        quotes = list.ToDictionary(q => q.Symbol);
+
+        // Aggregate Name across all trades — first non-null Name per Symbol wins.
+        var allTrades = await ShareProvider.ListAllAsync(companyId);
+        namesBySymbol = allTrades
+            .Where(t => !string.IsNullOrWhiteSpace(t.Name))
+            .GroupBy(t => t.Symbol)
+            .ToDictionary(g => g.Key, g => g.First().Name!);
+    }
+
+    private async Task ChangeYear(int delta)
+    {
+        year += delta;
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync(Share t)
+    {
+        var symbol = t.Symbol;
+        await ShareProvider.DeleteAsync(t.Id);
+        await ShareCalc.RecomputeMatchingAsync(companyId, symbol);
+        statusMessage = $"Smazáno. Přepočítán P/L pro {symbol}.";
+        await ReloadOpenPositionsAsync();
+        await ReloadAsync();
+    }
+
+    private async Task RefreshQuoteAsync(string symbol)
+    {
+        quoteBusy = true;
+        try
+        {
+            var q = await QuoteService.RefreshAsync(companyId, symbol);
+            if (q != null)
+            {
+                quotes[symbol] = q;
+                statusMessage = $"Cena pro {symbol} aktualizována: {q.LastPrice:0.######} {q.Currency}";
+            }
+            else
+            {
+                statusMessage = $"Cenu pro {symbol} se nepodařilo dotáhnout.";
+            }
+        }
+        finally
+        {
+            quoteBusy = false;
+        }
+    }
+
+    private async Task RefreshAllQuotesAsync()
+    {
+        quoteBusy = true;
+        try
+        {
+            var n = await QuoteService.RefreshAllOpenAsync(companyId);
+            var list = await QuoteProvider.ListAsync(companyId);
+            quotes = list.ToDictionary(q => q.Symbol);
+            statusMessage = $"Aktualizováno {n} kurzů.";
+        }
+        finally
+        {
+            quoteBusy = false;
+        }
+    }
+
+    private static string Fmt(decimal v) => v.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtNullable(decimal? v) => v.HasValue ? Fmt(v.Value) : "—";
+    private static string FmtPrice(decimal v) => v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtQty(decimal v) => v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtRate(decimal v) => v.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FmtPct(decimal v) => v.ToString("+0.00;-0.00;0.00", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private static string PnlClass(decimal? v) => v switch
+    {
+        > 0m => "text-success",
+        < 0m => "text-danger",
+        _ => string.Empty,
+    };
+
+    private static string CodeLabel(ShareTradeCode c) => c == ShareTradeCode.Buy ? "B" : "S";
+
+    private static string CodeBadgeClass(ShareTradeCode c) => c == ShareTradeCode.Buy
+        ? "text-bg-secondary"
+        : "text-bg-primary";
+
+    // For a Sell with realized P/L:
+    //   Income  = gross sale proceeds (abs of sell-trade Proceeds)
+    //   Expense = matched buy basis + sell commission = Income - RealizedPnl
+    private static (decimal IncomeUsd, decimal ExpenseUsd, decimal IncomeCzk, decimal ExpenseCzk)?
+        IncomeExpense(Share t)
+    {
+        if (t.Code != ShareTradeCode.Sell || !t.RealizedPnl.HasValue) return null;
+        var incomeUsd = Math.Abs(t.Proceeds);
+        var expenseUsd = incomeUsd - t.RealizedPnl.Value;
+        var incomeCzk = Math.Abs(t.ProceedsCzk);
+        var expenseCzk = incomeCzk - (t.RealizedPnlCzk ?? 0m);
+        return (incomeUsd, expenseUsd, incomeCzk, expenseCzk);
+    }
+}
