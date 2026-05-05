@@ -146,6 +146,7 @@ builder.Services.AddScoped<ISecurityLookupService, OpenFigiSecurityLookupService
 // Broker imports (CSV/XLSX from Degiro, XTB, …)
 builder.Services.AddScoped<IBrokerImportProvider, BrokerImportProvider>();
 builder.Services.AddScoped<IBrokerImportParser, DegiroCsvParser>();
+builder.Services.AddScoped<IBrokerImportParser, XtbXlsxParser>();
 builder.Services.AddScoped<ISymbolResolutionService, SymbolResolutionService>();
 builder.Services.AddScoped<IBrokerImportService, BrokerImportService>();
 

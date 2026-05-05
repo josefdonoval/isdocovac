@@ -8,8 +8,9 @@
             <section class="landing-hero">
                 <h1>Isdocovac</h1>
                 <p class="landing-lede">
-                    Spravujte faktury, kontakty a DPH napříč více firmami z jednoho místa.
-                    Importujte ISDOC i PDF, synchronizujte z Fakturoidu, generujte přiznání DPH a kontrolní hlášení.
+                    Účetnictví a investice na jednom místě. Vystavujte a importujte faktury, evidujte
+                    náklady, kontakty a DPH napříč více firmami — a sledujte k tomu obchody s akciemi
+                    i opcemi z Degiro, XTB a dalších brokerů.
                 </p>
                 <div class="landing-cta">
                     <a class="btn btn-primary btn-lg" href="/auth/register">Vytvořit účet</a>
@@ -23,77 +24,166 @@
                     <p>Účetní i podnikatelé vedou kolik firem potřebují. Přepínejte mezi nimi jedním kliknutím.</p>
                 </div>
                 <div class="landing-feature">
-                    <h3>ISDOC + PDF import</h3>
-                    <p>Nahrajte XML i PDF faktury. AI z PDF vytáhne všechna potřebná data.</p>
+                    <h3>Vystavování faktur</h3>
+                    <p>Vystavte odběratelské faktury s DPH, položkami a splatností přímo v aplikaci.</p>
+                </div>
+                <div class="landing-feature">
+                    <h3>Evidence nákladů</h3>
+                    <p>Zadávejte přijaté faktury ručně nebo nahrajte ISDOC i PDF — AI z PDF vytáhne všechna potřebná data.</p>
                 </div>
                 <div class="landing-feature">
                     <h3>Fakturoid sync</h3>
                     <p>Připojte svůj Fakturoid účet a importujte vystavené faktury automaticky.</p>
                 </div>
                 <div class="landing-feature">
+                    <h3>Kontakty</h3>
+                    <p>Spravujte odběratele a dodavatele s IČO, DIČ a adresami — sdílené napříč fakturami.</p>
+                </div>
+                <div class="landing-feature">
                     <h3>DPH a kontrolní hlášení</h3>
-                    <p>Generujte XML pro Finanční správu měsíčně i čtvrtletně.</p>
+                    <p>Generujte XML přiznání DPH a kontrolní hlášení pro Finanční správu měsíčně i čtvrtletně.</p>
+                </div>
+                <div class="landing-feature">
+                    <h3>Akcie a opce</h3>
+                    <p>Evidujte obchody s akciemi i opcemi, FIFO párování a realizovaný zisk/ztrátu v CZK podle kurzů ČNB.</p>
+                </div>
+                <div class="landing-feature">
+                    <h3>Import obchodů od brokera</h3>
+                    <p>Nahrajte CSV z Degiro nebo XLSX z XTB — obchody se rozparsují, deduplikují a připraví k importu.</p>
                 </div>
             </section>
         </div>
     </NotAuthorized>
     <Authorized>
         <div class="hero">
-            <h1>Welcome to Isdocovac</h1>
-            <p>Upload, parse and sync ISDOC invoices across your connected sources.</p>
+            <h1>Vítej zpátky</h1>
+            <p>Nejčastější operace na jednom místě. Postranní menu ukazuje vše ostatní.</p>
         </div>
 
-        <div class="card-grid">
-            <a class="feature-card" href="invoices">
-                <div class="feature-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
-                </div>
-                <div class="feature-body">
-                    <h2>All Invoices</h2>
-                    <p>Browse and manage every invoice you've uploaded.</p>
-                </div>
-            </a>
+        <section class="dash-section">
+            <h2 class="dash-section-title">Faktury &amp; náklady</h2>
+            <div class="card-grid">
+                <a class="feature-card" href="invoices/create-outbound">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Vystavit fakturu</h2>
+                        <p>Vystav novou odběratelskou fakturu s DPH a položkami.</p>
+                    </div>
+                </a>
 
-            <a class="feature-card" href="invoices/create-outbound">
-                <div class="feature-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
-                </div>
-                <div class="feature-body">
-                    <h2>Create Invoice</h2>
-                    <p>Start a new invoice from scratch.</p>
-                </div>
-            </a>
+                <a class="feature-card" href="invoices/create-inbound">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M6 9l6-6 6 6"/><path d="M4 21h16"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Vytvořit náklad</h2>
+                        <p>Zadej přijatou fakturu ručně — pro doklady, které nejsou k nahrání.</p>
+                    </div>
+                </a>
 
-            <a class="feature-card" href="upload-invoice">
-                <div class="feature-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                </div>
-                <div class="feature-body">
-                    <h2>Upload Invoice</h2>
-                    <p>Import ISDOC XML files into the system.</p>
-                </div>
-            </a>
+                <a class="feature-card" href="upload-invoice">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Nahrát fakturu</h2>
+                        <p>Načti ISDOC XML nebo PDF — z PDF AI vytáhne všechna data.</p>
+                    </div>
+                </a>
 
-            <a class="feature-card" href="isdoc/parsed">
-                <div class="feature-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
-                </div>
-                <div class="feature-body">
-                    <h2>Parsed ISDOC</h2>
-                    <p>Review structured data extracted from uploads.</p>
-                </div>
-            </a>
+                <a class="feature-card" href="invoices">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Všechny faktury</h2>
+                        <p>Vystavené i přijaté doklady na jednom přehledu.</p>
+                    </div>
+                </a>
 
-            <a class="feature-card" href="fakturoid/staging">
-                <div class="feature-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"/><path d="M12 12v9m-4-4 4 4 4-4"/></svg>
-                </div>
-                <div class="feature-body">
-                    <h2>Fakturoid Staging</h2>
-                    <p>Sync and stage invoices from Fakturoid.</p>
-                </div>
-            </a>
-        </div>
+                <a class="feature-card" href="fakturoid/staging">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"/><path d="M12 12v9m-4-4 4 4 4-4"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Fakturoid sync</h2>
+                        <p>Stáhni a importuj vystavené faktury z Fakturoidu.</p>
+                    </div>
+                </a>
+
+                <a class="feature-card" href="contacts">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Kontakty</h2>
+                        <p>Spravuj odběratele a dodavatele s IČO, DIČ a adresami.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <section class="dash-section">
+            <h2 class="dash-section-title">DPH &amp; reporting</h2>
+            <div class="card-grid">
+                <a class="feature-card" href="vat/monthly">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>DPH a kontrolní hlášení</h2>
+                        <p>Vygeneruj XML přiznání DPH a KH pro Finanční správu.</p>
+                    </div>
+                </a>
+
+                <a class="feature-card" href="vat/company">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Profil firmy</h2>
+                        <p>Nastav identifikaci, plátcovství DPH a období podání.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <section class="dash-section">
+            <h2 class="dash-section-title">Investice</h2>
+            <div class="card-grid">
+                <a class="feature-card" href="shares">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="5" y="11" width="3" height="8"/><rect x="10.5" y="7" width="3" height="12"/><rect x="16" y="3" width="3" height="16"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Akcie</h2>
+                        <p>Obchody, FIFO párování a realizovaný zisk/ztráta v CZK.</p>
+                    </div>
+                </a>
+
+                <a class="feature-card" href="investments">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 6-6"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Opce</h2>
+                        <p>Eviduj otevírací i uzavírací nohy včetně přepočtu na CZK.</p>
+                    </div>
+                </a>
+
+                <a class="feature-card" href="imports/broker">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                    </div>
+                    <div class="feature-body">
+                        <h2>Import obchodů</h2>
+                        <p>Nahraj CSV z Degiro nebo XLSX z XTB — obchody se rozparsují a deduplikují.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
 
         <footer class="page-footer">
             &copy; @DateTime.UtcNow.Year Isdocovac

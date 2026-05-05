@@ -321,3 +321,42 @@ h1:focus {
     font-size: 0.95rem;
     line-height: 1.5;
 }
+
+/* Compact investment tables (shares, options, broker import preview) */
+.invest-table {
+    font-size: 0.8125rem;
+}
+
+.invest-table thead th {
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-soft);
+    white-space: nowrap;
+}
+
+.invest-table td.sym,
+.invest-table th.sym {
+    font-family: 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.invest-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.invest-table th.sortable:hover {
+    background-color: var(--surface-hover);
+}
+
+.invest-table th.sortable .sort-ind {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    margin-left: 0.25rem;
+}
+
+.invest-table th.sortable.sort-active .sort-ind {
+    color: var(--accent);
+}

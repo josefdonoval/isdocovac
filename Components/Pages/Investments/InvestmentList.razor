@@ -83,7 +83,7 @@
     else
     {
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle small">
+            <table class="table table-sm table-hover align-middle invest-table">
                 <thead class="table-light">
                     <tr>
                         <th>Symbol</th>
@@ -113,7 +113,7 @@
                     {
                         var ie = IncomeExpense(t);
                         <tr>
-                            <td><a href="@($"/investments/{t.Id}")" class="text-decoration-none">@t.Symbol</a></td>
+                            <td class="sym"><a href="@($"/investments/{t.Id}")" class="text-decoration-none">@t.Symbol</a></td>
                             <td>@t.TradeDateTime.ToString("yyyy-MM-dd HH:mm")</td>
                             <td class="text-end">@t.Quantity</td>
                             <td class="text-end">@FmtPrice(t.TradePrice)</td>

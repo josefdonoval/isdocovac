@@ -48,7 +48,7 @@
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Soubor *</label>
-                    <InputFile class="form-control" OnChange="OnFileChanged" accept=".csv,.txt" disabled="@busy" />
+                    <InputFile class="form-control" OnChange="OnFileChanged" accept=".csv,.txt,.xlsx" disabled="@busy" />
                     @if (selectedFile != null)
                     {
                         <div class="form-text">@selectedFile.Name (@FormatSize(selectedFile.Size))</div>
@@ -62,7 +62,7 @@
         </EditForm>
 
         <div class="alert alert-info mt-4 small">
-            <strong>Podporované zdroje:</strong> DEGIRO (CSV export <em>Transactions.csv</em>). Ostatní brokeři budou přidáni postupně.
+            <strong>Podporované zdroje:</strong> DEGIRO (CSV export <em>Transactions.csv</em>) a XTB (XLSX export — list <em>Cash Operations</em>; jeden soubor na měnu, název musí začínat prefixem měny, např. <code>USD_…xlsx</code>). Ostatní brokeři budou přidáni postupně.
         </div>
     }
     else
@@ -248,9 +248,14 @@
         try
         {
             await using var stream = selectedFile.OpenReadStream(MaxFileSize);
+            var contentType = !string.IsNullOrEmpty(selectedFile.ContentType)
+                ? selectedFile.ContentType
+                : selectedFile.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
+                    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    : "text/csv";
             var (entity, existing) = await ImportService.UploadAsync(
                 companyId, selectedBroker, selectedFile.Name, selectedFile.Size,
-                string.IsNullOrEmpty(selectedFile.ContentType) ? "text/csv" : selectedFile.ContentType,
+                contentType,
                 stream);
 
             if (existing != null)

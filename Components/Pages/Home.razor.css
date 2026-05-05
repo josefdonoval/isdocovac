@@ -22,6 +22,19 @@
     gap: 1rem;
 }
 
+.dash-section + .dash-section {
+    margin-top: 2rem;
+}
+
+.dash-section-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-soft, var(--text-muted));
+    margin: 0 0 0.75rem;
+}
+
 .feature-card {
     display: flex;
     align-items: flex-start;

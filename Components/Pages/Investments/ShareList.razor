@@ -3,6 +3,7 @@
 @using Isdocovac.Models.Enums
 @using Isdocovac.Providers.Investments
 @using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Fx
 @using Isdocovac.Services.Investments
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
@@ -11,6 +12,7 @@
 @inject IShareQuoteProvider QuoteProvider
 @inject IShareCalculationService ShareCalc
 @inject IShareQuoteService QuoteService
+@inject ICnbExchangeRateService Cnb
 @inject NavigationManager Nav
 @rendermode InteractiveServer
 
@@ -48,48 +50,96 @@
         }
         else
         {
+            <div class="card-body py-2 border-bottom">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-4">
+                        <input type="search" class="form-control form-control-sm" placeholder="Hledat symbol/název…"
+                               @bind="filterText" @bind:event="oninput" @bind:after="ApplyFiltersAndSort" />
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" @bind="filterBroker" @bind:after="ApplyFiltersAndSort">
+                            <option value="">Všichni brokeři</option>
+                            @foreach (var b in availableBrokers)
+                            {
+                                <option value="@b">@BrokerLabel.For(b)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" @bind="filterCurrency" @bind:after="ApplyFiltersAndSort">
+                            <option value="">Všechny měny</option>
+                            @foreach (var c in availableCurrencies)
+                            {
+                                <option value="@c">@c</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3 text-md-end small text-muted">
+                        Zobrazeno @filteredPositions.Count z @openPositions.Count
+                        @if (HasActiveFilter())
+                        {
+                            <button type="button" class="btn btn-sm btn-link p-0 ms-2" @onclick="ClearFilters">vyčistit</button>
+                        }
+                    </div>
+                </div>
+            </div>
             <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle small mb-0">
+                <table class="table table-sm table-hover align-middle invest-table mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>Symbol</th>
-                            <th>Název</th>
+                            @SortHeader(SortKey.Symbol, "Symbol")
+                            @SortHeader(SortKey.Name, "Název")
                             <th>Broker(y)</th>
-                            <th>Měna</th>
-                            <th class="text-end">Net Qty</th>
-                            <th class="text-end">Avg buy</th>
-                            <th class="text-end">Cost basis (USD)</th>
-                            <th class="text-end">Cost basis CZK</th>
-                            <th class="text-end">Last price</th>
+                            @SortHeader(SortKey.Currency, "Měna")
+                            @SortHeader(SortKey.NetQty, "Net Qty", "text-end")
+                            @SortHeader(SortKey.AvgBuy, "Avg buy", "text-end")
+                            @SortHeader(SortKey.CostBasisUsd, "Cost basis", "text-end")
+                            @SortHeader(SortKey.CostBasisCzk, "Cost basis CZK", "text-end")
+                            @SortHeader(SortKey.LastPrice, "Last price", "text-end")
                             <th>Last update</th>
-                            <th class="text-end">Market value</th>
-                            <th class="text-end">Unrealized P/L</th>
-                            <th class="text-end">P/L %</th>
+                            @SortHeader(SortKey.MarketValue, "Market value", "text-end")
+                            @SortHeader(SortKey.Pnl, "Unrealized P/L", "text-end")
+                            @SortHeader(SortKey.PnlPct, "P/L %", "text-end")
                             <th class="text-end">Akce</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var p in openPositions)
+                        @foreach (var p in filteredPositions)
                         {
                             quotes.TryGetValue(p.Symbol, out var q);
-                            var marketValue = q != null ? q.LastPrice * p.NetQuantity : (decimal?)null;
-                            var pnl = marketValue.HasValue ? marketValue.Value - p.CostBasisUsd : (decimal?)null;
-                            var pnlPct = (pnl.HasValue && p.CostBasisUsd > 0) ? pnl.Value / p.CostBasisUsd * 100m : (decimal?)null;
+                            var marks = Marks(p);
                             namesBySymbol.TryGetValue(p.Symbol, out var name);
+                            var fxNote = q != null && !string.Equals(q.Currency, p.Currency, StringComparison.OrdinalIgnoreCase)
+                                ? $"FX z {q.Currency} → {p.Currency}"
+                                : null;
                             <tr>
-                                <td class="fw-semibold">@p.Symbol</td>
+                                <td class="sym">@p.Symbol</td>
                                 <td>@(name ?? q?.Name ?? "—")</td>
                                 <td>@string.Join(", ", p.Brokers.Select(BrokerLabel.For))</td>
                                 <td>@p.Currency</td>
                                 <td class="text-end">@FmtQty(p.NetQuantity)</td>
-                                <td class="text-end">@FmtPrice(p.AvgBuyPrice)</td>
-                                <td class="text-end">@Fmt(p.CostBasisUsd)</td>
-                                <td class="text-end">@Fmt(p.CostBasisCzk)</td>
-                                <td class="text-end">@(q != null ? FmtPrice(q.LastPrice) : "—")</td>
+                                <td class="text-end">@FmtMoney(p.AvgBuyPrice)</td>
+                                <td class="text-end">@FmtMoney(p.CostBasisUsd)</td>
+                                <td class="text-end">@FmtMoney(p.CostBasisCzk)</td>
+                                <td class="text-end" title="@fxNote">
+                                    @if (marks.Price.HasValue)
+                                    {
+                                        @FmtPrice(marks.Price.Value)
+                                        @if (fxNote != null) { <span class="text-muted small"> *</span> }
+                                    }
+                                    else if (q != null)
+                                    {
+                                        <span class="text-warning">@FmtPrice(q.LastPrice) <small>(@q.Currency)</small></span>
+                                    }
+                                    else
+                                    {
+                                        @("—")
+                                    }
+                                </td>
                                 <td>@(q != null ? q.FetchedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")</td>
-                                <td class="text-end">@(marketValue.HasValue ? Fmt(marketValue.Value) : "—")</td>
-                                <td class="text-end @PnlClass(pnl)">@(pnl.HasValue ? Fmt(pnl.Value) : "—")</td>
-                                <td class="text-end @PnlClass(pnlPct)">@(pnlPct.HasValue ? FmtPct(pnlPct.Value) : "—")</td>
+                                <td class="text-end">@(marks.MarketValue.HasValue ? FmtMoney(marks.MarketValue.Value) : "—")</td>
+                                <td class="text-end @PnlClass(marks.Pnl)">@(marks.Pnl.HasValue ? FmtMoney(marks.Pnl.Value) : "—")</td>
+                                <td class="text-end @PnlClass(marks.PnlPct)">@(marks.PnlPct.HasValue ? FmtPct(marks.PnlPct.Value) : "—")</td>
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => RefreshQuoteAsync(p.Symbol)" disabled="@quoteBusy" title="Aktualizovat cenu">↻</button>
                                 </td>
@@ -157,7 +207,7 @@
     else
     {
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle small">
+            <table class="table table-sm table-hover align-middle invest-table">
                 <thead class="table-light">
                     <tr>
                         <th>Symbol</th>
@@ -195,7 +245,7 @@
                             rowName = fallback ?? (quotes.TryGetValue(t.Symbol, out var qn) ? qn.Name : null);
                         }
                         <tr>
-                            <td><a href="@($"/shares/{t.Id}")" class="text-decoration-none">@t.Symbol</a></td>
+                            <td class="sym"><a href="@($"/shares/{t.Id}")" class="text-decoration-none">@t.Symbol</a></td>
                             <td>@(rowName ?? "—")</td>
                             <td>@BrokerLabel.For(t.Broker)</td>
                             <td>@t.TradeDateTime.ToString("yyyy-MM-dd HH:mm")</td>
@@ -242,6 +292,8 @@
 </div>
 
 @code {
+    private enum SortKey { Symbol, Name, Currency, NetQty, AvgBuy, CostBasisUsd, CostBasisCzk, LastPrice, MarketValue, Pnl, PnlPct }
+
     private int year = DateTime.Now.Year;
     private bool busy;
     private bool quoteBusy;
@@ -251,6 +303,22 @@
     private IReadOnlyList<ShareOpenPosition>? openPositions;
     private Dictionary<string, ShareQuote> quotes = new();
     private Dictionary<string, string> namesBySymbol = new();
+
+    // Filters + sort for positions table.
+    private string filterText = string.Empty;
+    private string filterBroker = string.Empty;
+    private string filterCurrency = string.Empty;
+    private SortKey sortKey = SortKey.Name;
+    private bool sortAsc = true;
+    private List<Broker> availableBrokers = new();
+    private List<string> availableCurrencies = new();
+    private List<ShareOpenPosition> filteredPositions = new();
+
+    // CZK per 1 unit of currency, for normalizing quote→position currency at display time.
+    // Quote currency from Yahoo (e.g. JPY for Nintendo Tokyo listing) often differs from the
+    // trade/position currency (e.g. EUR for the Frankfurt listing). One CZK rate per currency,
+    // pre-fetched after positions/quotes load so render/sort can stay synchronous.
+    private Dictionary<string, decimal?> czkPerUnit = new(StringComparer.OrdinalIgnoreCase);
     private decimal totalPnlUsd;
     private decimal totalPnlCzk;
     private decimal totalIncomeUsd;
@@ -315,6 +383,189 @@
             .Where(t => !string.IsNullOrWhiteSpace(t.Name))
             .GroupBy(t => t.Symbol)
             .ToDictionary(g => g.Key, g => g.First().Name!);
+
+        availableBrokers = openPositions
+            .SelectMany(p => p.Brokers)
+            .Distinct()
+            .OrderBy(b => BrokerLabel.For(b))
+            .ToList();
+        availableCurrencies = openPositions
+            .Select(p => p.Currency)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        await PrefetchFxRatesAsync();
+        ApplyFiltersAndSort();
+    }
+
+    private async Task PrefetchFxRatesAsync()
+    {
+        var needed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (openPositions != null)
+        {
+            foreach (var p in openPositions) if (!string.IsNullOrWhiteSpace(p.Currency)) needed.Add(p.Currency);
+        }
+        foreach (var q in quotes.Values) if (!string.IsNullOrWhiteSpace(q.Currency)) needed.Add(q.Currency);
+
+        foreach (var c in needed)
+        {
+            if (czkPerUnit.ContainsKey(c)) continue;
+            if (string.Equals(c, "CZK", StringComparison.OrdinalIgnoreCase)) { czkPerUnit[c] = 1m; continue; }
+
+            decimal? perUnit = null;
+            // CNB publishes rates ~14:30 CET on business days. Walk back up to a week to find one.
+            for (int back = 0; back < 7 && perUnit == null; back++)
+            {
+                try
+                {
+                    var d = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-back));
+                    var r = await Cnb.GetRateAsync(c, d);
+                    if (r.Amount > 0) perUnit = r.Rate / r.Amount;
+                }
+                catch
+                {
+                    // try previous day
+                }
+            }
+            czkPerUnit[c] = perUnit;
+        }
+    }
+
+    /// <summary>
+    /// Convert <paramref name="price"/> from <paramref name="from"/> to <paramref name="to"/>
+    /// via CZK as the bridge. Returns null if either rate is unavailable.
+    /// </summary>
+    private decimal? Convert(decimal price, string from, string to)
+    {
+        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to)) return null;
+        if (string.Equals(from, to, StringComparison.OrdinalIgnoreCase)) return price;
+        if (!czkPerUnit.TryGetValue(from, out var f) || f == null) return null;
+        if (!czkPerUnit.TryGetValue(to, out var t) || t == null || t.Value <= 0) return null;
+        return price * f.Value / t.Value;
+    }
+
+    /// <summary>
+    /// Normalized last price + market value + P/L for a position. Quote currency is normalized
+    /// to the position's trade currency; if conversion isn't possible (missing FX), returns null.
+    /// </summary>
+    private (decimal? Price, decimal? MarketValue, decimal? Pnl, decimal? PnlPct) Marks(ShareOpenPosition p)
+    {
+        if (!quotes.TryGetValue(p.Symbol, out var q)) return (null, null, null, null);
+        var price = Convert(q.LastPrice, q.Currency, p.Currency);
+        if (price == null) return (null, null, null, null);
+        var mv = price.Value * p.NetQuantity;
+        var pnl = mv - p.CostBasisUsd;
+        decimal? pnlPct = p.CostBasisUsd > 0 ? pnl / p.CostBasisUsd * 100m : null;
+        return (price, mv, pnl, pnlPct);
+    }
+
+    private void ApplyFiltersAndSort()
+    {
+        if (openPositions == null)
+        {
+            filteredPositions = new();
+            return;
+        }
+
+        IEnumerable<ShareOpenPosition> q = openPositions;
+
+        if (!string.IsNullOrWhiteSpace(filterText))
+        {
+            var needle = filterText.Trim();
+            q = q.Where(p =>
+                (p.Symbol?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (namesBySymbol.TryGetValue(p.Symbol ?? "", out var n) && n.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                || (quotes.TryGetValue(p.Symbol ?? "", out var qq) && (qq.Name ?? "").Contains(needle, StringComparison.OrdinalIgnoreCase)));
+        }
+        if (!string.IsNullOrWhiteSpace(filterBroker) && Enum.TryParse<Broker>(filterBroker, out var brk))
+        {
+            q = q.Where(p => p.Brokers.Contains(brk));
+        }
+        if (!string.IsNullOrWhiteSpace(filterCurrency))
+        {
+            q = q.Where(p => string.Equals(p.Currency, filterCurrency, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Sort key extractors. Decimal values flow through nullable for missing-quote rows.
+        Func<ShareOpenPosition, IComparable?> keyFn = sortKey switch
+        {
+            SortKey.Symbol => p => p.Symbol,
+            SortKey.Name => p => namesBySymbol.TryGetValue(p.Symbol ?? "", out var n) ? n : (quotes.TryGetValue(p.Symbol ?? "", out var qq) ? qq.Name : null) ?? p.Symbol,
+            SortKey.Currency => p => p.Currency,
+            SortKey.NetQty => p => p.NetQuantity,
+            SortKey.AvgBuy => p => p.AvgBuyPrice,
+            SortKey.CostBasisUsd => p => p.CostBasisUsd,
+            SortKey.CostBasisCzk => p => p.CostBasisCzk,
+            SortKey.LastPrice => p => Marks(p).Price,
+            SortKey.MarketValue => p => Marks(p).MarketValue,
+            SortKey.Pnl => p => Marks(p).Pnl,
+            SortKey.PnlPct => p => Marks(p).PnlPct,
+            _ => p => p.Symbol,
+        };
+
+        // Stable secondary sort by symbol so equal keys don't shuffle on re-render.
+        var sorted = sortAsc
+            ? q.OrderBy(p => keyFn(p), NullSafeComparer.Instance).ThenBy(p => p.Symbol).ToList()
+            : q.OrderByDescending(p => keyFn(p), NullSafeComparer.Instance).ThenBy(p => p.Symbol).ToList();
+
+        filteredPositions = sorted;
+    }
+
+    private void ToggleSort(SortKey key)
+    {
+        if (sortKey == key)
+        {
+            sortAsc = !sortAsc;
+        }
+        else
+        {
+            sortKey = key;
+            sortAsc = true;
+        }
+        ApplyFiltersAndSort();
+    }
+
+    private bool HasActiveFilter() =>
+        !string.IsNullOrWhiteSpace(filterText)
+        || !string.IsNullOrWhiteSpace(filterBroker)
+        || !string.IsNullOrWhiteSpace(filterCurrency);
+
+    private void ClearFilters()
+    {
+        filterText = "";
+        filterBroker = "";
+        filterCurrency = "";
+        ApplyFiltersAndSort();
+    }
+
+    private RenderFragment SortHeader(SortKey key, string label, string? extraClass = null) => builder =>
+    {
+        var active = sortKey == key;
+        var cls = "sortable" + (active ? " sort-active" : "") + (extraClass != null ? " " + extraClass : "");
+        var indicator = active ? (sortAsc ? "▲" : "▼") : "↕";
+        builder.OpenElement(0, "th");
+        builder.AddAttribute(1, "class", cls);
+        builder.AddAttribute(2, "onclick", EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, () => ToggleSort(key)));
+        builder.AddContent(3, label);
+        builder.OpenElement(4, "span");
+        builder.AddAttribute(5, "class", "sort-ind");
+        builder.AddContent(6, " " + indicator);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private sealed class NullSafeComparer : IComparer<IComparable?>
+    {
+        public static readonly NullSafeComparer Instance = new();
+        public int Compare(IComparable? x, IComparable? y)
+        {
+            if (x == null && y == null) return 0;
+            if (x == null) return 1; // nulls sort last
+            if (y == null) return -1;
+            return x.CompareTo(y);
+        }
     }
 
     private async Task ChangeYear(int delta)
@@ -375,6 +626,11 @@
     private static string FmtNullable(decimal? v) => v.HasValue ? Fmt(v.Value) : "—";
     private static string FmtPrice(decimal v) => v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
     private static string FmtQty(decimal v) => v.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    // Money: 0 decimals when whole, else 2.
+    private static string FmtMoney(decimal v) =>
+        v == Math.Truncate(v)
+            ? v.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+            : v.ToString("N2", System.Globalization.CultureInfo.InvariantCulture);
     private static string FmtRate(decimal v) => v.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
     private static string FmtPct(decimal v) => v.ToString("+0.00;-0.00;0.00", System.Globalization.CultureInfo.InvariantCulture) + "%";
 
