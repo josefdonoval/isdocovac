@@ -134,8 +134,34 @@ builder.Services.AddScoped<IKhXmlGeneratorService, KhXmlGeneratorService>();
 // Investments
 builder.Services.AddScoped<IOptionTradeProvider, OptionTradeProvider>();
 builder.Services.AddScoped<IOptionTradeCalculationService, OptionTradeCalculationService>();
+builder.Services.AddScoped<IShareProvider, ShareProvider>();
+builder.Services.AddScoped<IShareQuoteProvider, ShareQuoteProvider>();
+builder.Services.AddScoped<IShareCalculationService, ShareCalculationService>();
+builder.Services.AddHttpClient("Yahoo");
+builder.Services.AddScoped<IShareQuoteService, YahooQuoteService>();
+builder.Services.AddHttpClient("OpenFigi");
+builder.Services.AddScoped<ISecurityLookupService, OpenFigiSecurityLookupService>();
 
 var app = builder.Build();
+
+// Apply pending EF Core migrations at startup. Fails fast on a misconfigured DB so we don't
+// serve traffic against a stale schema. Safe to call when there's nothing to do.
+await using (var migrationScope = app.Services.CreateAsyncScope())
+{
+    var contextFactory = migrationScope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+    await using var migrationContext = await contextFactory.CreateDbContextAsync();
+    var pending = (await migrationContext.Database.GetPendingMigrationsAsync()).ToList();
+    if (pending.Count > 0)
+    {
+        Log.Information("Applying {Count} pending EF migration(s): {Migrations}", pending.Count, string.Join(", ", pending));
+        await migrationContext.Database.MigrateAsync();
+        Log.Information("EF migrations applied.");
+    }
+    else
+    {
+        Log.Information("Database schema up to date — no pending migrations.");
+    }
+}
 
 // One log line per HTTP request: method, path, status, elapsed, plus user/session enrichment.
 app.UseSerilogRequestLogging(options =>
