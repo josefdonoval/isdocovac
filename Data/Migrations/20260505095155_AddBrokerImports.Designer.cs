@@ -3,6 +3,7 @@ using System;
 using Isdocovac.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Isdocovac.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260505095155_AddBrokerImports")]
+    partial class AddBrokerImports
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1835,7 +1838,9 @@ namespace Isdocovac.Data.Migrations
 
                     b.HasIndex("CompanyId", "TradeDateTime");
 
-                    b.HasIndex("CompanyId", "Broker", "ExternalOrderId");
+                    b.HasIndex("CompanyId", "Broker", "ExternalOrderId")
+                        .IsUnique()
+                        .HasFilter("\"ExternalOrderId\" IS NOT NULL");
 
                     b.ToTable("shares");
                 });

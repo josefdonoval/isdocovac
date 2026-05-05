@@ -82,6 +82,14 @@ public class Share
     [MaxLength(500)]
     public string? Notes { get; set; }
 
+    [MaxLength(64)]
+    public string? ExternalOrderId { get; set; }
+
+    public Guid? BrokerImportId { get; set; }
+
+    [ForeignKey(nameof(BrokerImportId))]
+    public BrokerImport? BrokerImport { get; set; }
+
     [Required]
     public DateTime CreatedAt { get; set; }
 

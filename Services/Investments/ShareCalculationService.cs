@@ -59,20 +59,29 @@ public class ShareCalculationService : IShareCalculationService
         trade.Proceeds = Math.Round(-trade.Quantity * trade.TradePrice, 2, MidpointRounding.AwayFromZero);
         trade.Basis = Math.Round(trade.Proceeds - trade.CommissionFee, 2, MidpointRounding.AwayFromZero);
 
-        // FX from CNB — derive date from user-local TradeDateTime (per CLAUDE.md).
         var date = DateOnly.FromDateTime(trade.TradeDateTime);
-        var rate = await _cnb.GetRateAsync(
-            string.IsNullOrWhiteSpace(trade.Currency) ? "USD" : trade.Currency,
-            date,
-            ct);
+        var currency = string.IsNullOrWhiteSpace(trade.Currency) ? "USD" : trade.Currency;
 
-        trade.CnbDate = rate.Date;
-        trade.FxRate = rate.Rate;
-        trade.FxAmount = rate.Amount;
-
-        trade.ProceedsCzk = ToCzk(trade.Proceeds, rate);
-        trade.CommissionFeeCzk = ToCzk(trade.CommissionFee, rate);
-        trade.BasisCzk = ToCzk(trade.Basis, rate);
+        // CZK is CNB's base currency — no rate is published for it. Trade values are already CZK.
+        if (string.Equals(currency, "CZK", StringComparison.OrdinalIgnoreCase))
+        {
+            trade.CnbDate = date;
+            trade.FxRate = 1m;
+            trade.FxAmount = 1;
+            trade.ProceedsCzk = trade.Proceeds;
+            trade.CommissionFeeCzk = trade.CommissionFee;
+            trade.BasisCzk = trade.Basis;
+        }
+        else
+        {
+            var rate = await _cnb.GetRateAsync(currency, date, ct);
+            trade.CnbDate = rate.Date;
+            trade.FxRate = rate.Rate;
+            trade.FxAmount = rate.Amount;
+            trade.ProceedsCzk = ToCzk(trade.Proceeds, rate);
+            trade.CommissionFeeCzk = ToCzk(trade.CommissionFee, rate);
+            trade.BasisCzk = ToCzk(trade.Basis, rate);
+        }
 
         trade.RealizedPnl = null;
         trade.RealizedPnlCzk = null;

@@ -1,0 +1,116 @@
+@page "/auth/dev-login"
+@using Isdocovac.Providers
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using System.Security.Claims
+@inject IUserProvider UserProvider
+@inject ISessionService SessionService
+@inject IConfiguration Configuration
+@inject IWebHostEnvironment Env
+@inject IHttpContextAccessor HttpContextAccessor
+@inject NavigationManager NavigationManager
+@inject ICompanyProvider CompanyProvider
+
+<PageTitle>Dev Login</PageTitle>
+
+<div class="container py-5">
+    <div class="card mx-auto" style="max-width: 480px;">
+        <div class="card-body">
+            <h4 class="mb-3">Dev auto-login</h4>
+            @if (busy)
+            {
+                <p class="text-muted">Přihlašuji…</p>
+            }
+            else if (errorMessage != null)
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+                <a class="btn btn-outline-secondary" href="/auth/login">Standardní login</a>
+            }
+            else if (signedIn)
+            {
+                <div class="alert alert-success">Přihlášen jako <strong>@email</strong>. Přesměrovávám…</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool busy = true;
+    private bool signedIn;
+    private string? errorMessage;
+    private string? email;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var enabled = Configuration.GetValue<bool>("Authentication:DevAutoLogin:Enabled");
+            if (!enabled || !Env.IsDevelopment())
+            {
+                errorMessage = "Dev auto-login není povolen v této konfiguraci.";
+                return;
+            }
+
+            email = Configuration["Authentication:DevAutoLogin:Email"];
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                errorMessage = "Authentication:DevAutoLogin:Email není nastaven.";
+                return;
+            }
+
+            var user = await UserProvider.GetUserByEmailAsync(email);
+            if (user == null)
+            {
+                errorMessage = $"Uživatel s e-mailem {email} v DB neexistuje. Přihlas se nejdřív přes magic link.";
+                return;
+            }
+
+            var httpContext = HttpContextAccessor.HttpContext;
+            var ipAddress = httpContext?.Connection.RemoteIpAddress?.ToString();
+            var userAgent = httpContext?.Request.Headers.UserAgent.ToString();
+
+            var sessionToken = await SessionService.CreateSessionAsync(user.Id, ipAddress, userAgent);
+
+            if (httpContext != null)
+            {
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Email, user.Email),
+                    new Claim("SessionToken", sessionToken),
+                };
+                if (!string.IsNullOrEmpty(user.DisplayName))
+                {
+                    claims.Add(new Claim("DisplayName", user.DisplayName));
+                }
+
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var props = new AuthenticationProperties
+                {
+                    IsPersistent = true,
+                    ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14),
+                };
+
+                await httpContext.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    new ClaimsPrincipal(identity),
+                    props);
+            }
+
+            signedIn = true;
+            var companies = await CompanyProvider.ListByOwnerAsync(user.Id);
+            var redirect = companies.Count == 0 ? "/companies/new" : "/";
+            NavigationManager.NavigateTo(redirect, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Chyba dev loginu: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

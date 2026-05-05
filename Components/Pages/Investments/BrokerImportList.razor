@@ -1,0 +1,92 @@
+@page "/imports/broker"
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers.Investments
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IBrokerImportProvider Imports
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>Historie importů</PageTitle>
+
+<div class="container py-4" style="max-width: 1300px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">Historie importů</h1>
+        <a class="btn btn-primary" href="/imports/broker/new">Nový import</a>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-muted">Načítám…</div>
+    }
+    else if (rows.Count == 0)
+    {
+        <div class="alert alert-light">Zatím žádné importy.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nahráno</th>
+                        <th>Broker</th>
+                        <th>Soubor</th>
+                        <th class="text-end">Řádků</th>
+                        <th class="text-end">Importováno</th>
+                        <th class="text-end">Přeskočeno</th>
+                        <th class="text-end">Duplicit</th>
+                        <th>Stav</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in rows)
+                    {
+                        <tr>
+                            <td>@b.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@BrokerLabel.For(b.Broker)</td>
+                            <td><a href="@($"/imports/broker/{b.Id}")">@b.FileName</a></td>
+                            <td class="text-end">@b.RowsTotal</td>
+                            <td class="text-end">@b.RowsImported</td>
+                            <td class="text-end">@b.RowsSkipped</td>
+                            <td class="text-end">@b.RowsDuplicate</td>
+                            <td>@StatusLabel(b.Status)</td>
+                            <td><a class="btn btn-sm btn-outline-secondary" href="@($"/imports/broker/{b.Id}")">Detail</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private bool loading = true;
+    private List<BrokerImport> rows = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var companyId = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (companyId == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        var list = await Imports.ListByCompanyAsync(companyId.Value);
+        rows = list.ToList();
+        loading = false;
+    }
+
+    private static string StatusLabel(BrokerImportStatus s) => s switch
+    {
+        BrokerImportStatus.Pending => "Čeká na náhled",
+        BrokerImportStatus.Parsed => "Naparsováno",
+        BrokerImportStatus.Imported => "Importováno",
+        BrokerImportStatus.Failed => "Chyba",
+        _ => s.ToString()
+    };
+}

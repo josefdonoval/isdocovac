@@ -5,6 +5,7 @@
 @using Isdocovac.Providers.Investments
 @using Isdocovac.Services.Authentication
 @using Isdocovac.Services.Investments
+@using Isdocovac.Services.Investments.BrokerImport
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inject ICurrentCompanyAccessor CurrentCompanyAccessor
@@ -18,8 +19,8 @@
 <div class="container py-4" style="max-width: 1400px;">
     <h1>Import obchodů akcií</h1>
     <p class="text-muted">
-        Vlož řádky oddělené tabulátorem.
-        Header je volitelný — když ho vložíš, automaticky se přeskočí.
+        Vlož řádky oddělené tabulátorem (TSV) nebo čárkou (CSV) — formát se detekuje automaticky podle prvního datového řádku.
+        Header je volitelný (přeskočí se).
         CNB kurzy se vždy dotahují čerstvě.
     </p>
 
@@ -54,10 +55,10 @@
     </div>
 
     <div class="mb-3">
-        <label class="form-label">Vstupní data (TSV)</label>
+        <label class="form-label">Vstupní data (TSV nebo CSV)</label>
         <textarea class="form-control font-monospace" rows="8" @bind="rawInput" @bind:event="oninput"
-                  placeholder="Symbol&#9;Date/Time&#9;Quantity&#9;T.Price&#9;Proceeds&#9;Comm/Fee&#9;Basis&#9;Realized P/L&#9;Code"></textarea>
-        <div class="form-text">Sloupce v očekávaném pořadí: Symbol, Date/Time, Quantity, T.Price, Proceeds, Comm/Fee, Basis, Realized P/L, Code (B/S), … (ostatní se ignorují).</div>
+                  placeholder="Symbol,Date/Time,Quantity,T.Price,Proceeds,Comm/Fee,Basis,Realized P/L,Code"></textarea>
+        <div class="form-text">Sloupce v očekávaném pořadí: Symbol, Date/Time, Quantity, T.Price, Proceeds, Comm/Fee, Basis, Realized P/L, Code (B/S), … (ostatní se ignorují). U CSV se akceptují i pole v uvozovkách (`"5,5800"`).</div>
     </div>
 
     <div class="d-flex gap-2 mb-3">
@@ -143,6 +144,13 @@
         preview = null;
         try
         {
+            if (LooksLikeDegiroExport(rawInput))
+            {
+                statusSuccess = false;
+                statusMessage = "Vypadá to jako Degiro export (sloupce Date, Time, Product, ISIN, …). Tahle stránka čeká IBKR-style sloupce (Symbol, Date/Time, Quantity, …). Pro Degiro použij Import obchodů → vybrat DEGIRO + nahrát soubor (link: /imports/broker/new). Tam se navíc ukládá originál, deduplikuje se proti DB a podporuje se multi-měna (USD/EUR/PLN/CZK).";
+                return;
+            }
+
             var rows = ParseRaw(rawInput);
             foreach (var row in rows)
             {
@@ -240,12 +248,24 @@
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("Symbol", StringComparison.OrdinalIgnoreCase)) continue;
 
-            var cells = trimmed.Split('\t');
-            if (cells.Length < 9)
+            // Auto-detect delimiter: tabs win if present (avoids splitting "Sep 5, 2024"-style
+            // dates incorrectly); otherwise split as CSV (handles quoted decimal commas).
+            List<string> cells = trimmed.Contains('\t')
+                ? trimmed.Split('\t').ToList()
+                : DegiroCsvParser.SplitCsv(trimmed);
+
+            // Skip header rows from common broker exports.
+            var first = cells.Count > 0 ? cells[0].Trim() : "";
+            if (first.Equals("Symbol", StringComparison.OrdinalIgnoreCase)
+                || first.Equals("Date", StringComparison.OrdinalIgnoreCase)
+                || first.Equals("Trade Date", StringComparison.OrdinalIgnoreCase)
+                || first.Equals("Datum", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (cells.Count < 9)
             {
-                result.Add(new ImportRow { Error = $"Řádek má {cells.Length} sloupců, očekáváno alespoň 9." });
+                result.Add(new ImportRow { Error = $"Řádek má {cells.Count} sloupců, očekáváno alespoň 9." });
                 continue;
             }
 
@@ -288,12 +308,48 @@
         return result;
     }
 
+    /// <summary>
+    /// Heuristic: a paste is "Degiro-shaped" if it has the Degiro CSV header signature, or if
+    /// data rows have ≥17 columns and the first cell parses as <c>dd-MM-yyyy</c>.
+    /// </summary>
+    private static bool LooksLikeDegiroExport(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var lines = raw.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            var t = line.Trim();
+            if (t.Length == 0) continue;
+            if (t.StartsWith("Date,Time,Product", StringComparison.OrdinalIgnoreCase)) return true;
+            var cells = DegiroCsvParser.SplitCsv(t);
+            if (cells.Count >= 17 && DateTime.TryParseExact(cells[0].Trim(),
+                    "dd-MM-yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+            {
+                return true;
+            }
+            // Inspect at most a few lines.
+            if (cells.Count >= 3) return false;
+        }
+        return false;
+    }
+
+    private static readonly string[] DateFormats =
+    {
+        "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
+        "dd-MM-yyyy HH:mm:ss", "dd-MM-yyyy HH:mm", "dd-MM-yyyy",
+        "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "dd/MM/yyyy",
+        "dd.MM.yyyy HH:mm:ss", "dd.MM.yyyy HH:mm", "dd.MM.yyyy",
+        "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm", "yyyy/MM/dd",
+        "MM/dd/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm", "MM/dd/yyyy",
+    };
+
     private static bool TryParseDate(string s, out DateTime dt)
     {
-        if (DateTime.TryParseExact(s, new[] { "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd" },
+        var trimmed = s.Trim();
+        if (DateTime.TryParseExact(trimmed, DateFormats,
                 CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
             return true;
-        return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt);
+        return DateTime.TryParse(trimmed, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt);
     }
 
     private static decimal ParseDecimal(string s)

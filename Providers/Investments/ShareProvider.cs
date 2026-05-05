@@ -1,5 +1,6 @@
 using Isdocovac.Data;
 using Isdocovac.Models;
+using Isdocovac.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Isdocovac.Providers.Investments;
@@ -10,11 +11,14 @@ public interface IShareProvider
     Task<IReadOnlyList<Share>> ListByYearAsync(Guid companyId, int year);
     Task<IReadOnlyList<Share>> ListBySymbolAsync(Guid companyId, string symbol);
     Task<IReadOnlyList<Share>> ListAllAsync(Guid companyId);
+    Task<IReadOnlyList<Share>> ListByImportAsync(Guid brokerImportId);
     Task<Share?> GetAsync(Guid id);
     Task<Share> CreateAsync(Share trade);
     Task<Share> UpdateAsync(Share trade);
     Task DeleteAsync(Guid id);
     Task<int> CreateBulkAsync(IEnumerable<Share> trades);
+    Task<HashSet<string>> GetExistingExternalOrderIdsAsync(Guid companyId, Broker broker, IEnumerable<string> orderIds);
+    Task<Dictionary<string, string>> GetSymbolByIsinAsync(Guid companyId, IEnumerable<string> isins);
 }
 
 public class ShareProvider : IShareProvider
@@ -116,6 +120,8 @@ public class ShareProvider : IShareProvider
         existing.BasisCzk = trade.BasisCzk;
         existing.RealizedPnlCzk = trade.RealizedPnlCzk;
         existing.Notes = trade.Notes;
+        existing.ExternalOrderId = trade.ExternalOrderId;
+        existing.BrokerImportId = trade.BrokerImportId;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync();
@@ -148,5 +154,58 @@ public class ShareProvider : IShareProvider
         context.Shares.AddRange(list);
         await context.SaveChangesAsync();
         return list.Count;
+    }
+
+    public async Task<IReadOnlyList<Share>> ListByImportAsync(Guid brokerImportId)
+    {
+        await using var context = _contextFactory.CreateDbContext();
+        return await context.Shares
+            .Where(t => t.BrokerImportId == brokerImportId)
+            .OrderBy(t => t.TradeDateTime)
+            .ThenBy(t => t.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<HashSet<string>> GetExistingExternalOrderIdsAsync(Guid companyId, Broker broker, IEnumerable<string> orderIds)
+    {
+        var input = orderIds
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .ToList();
+        if (input.Count == 0) return new HashSet<string>(StringComparer.Ordinal);
+
+        await using var context = _contextFactory.CreateDbContext();
+        var found = await context.Shares
+            .Where(t => t.CompanyId == companyId
+                && t.Broker == broker
+                && t.ExternalOrderId != null
+                && input.Contains(t.ExternalOrderId))
+            .Select(t => t.ExternalOrderId!)
+            .Distinct()
+            .ToListAsync();
+        return new HashSet<string>(found, StringComparer.Ordinal);
+    }
+
+    public async Task<Dictionary<string, string>> GetSymbolByIsinAsync(Guid companyId, IEnumerable<string> isins)
+    {
+        var input = isins
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim().ToUpperInvariant())
+            .Distinct()
+            .ToList();
+        if (input.Count == 0) return new Dictionary<string, string>();
+
+        await using var context = _contextFactory.CreateDbContext();
+        var rows = await context.Shares
+            .Where(t => t.CompanyId == companyId && t.Isin != null && input.Contains(t.Isin))
+            .Select(t => new { t.Isin, t.Symbol, t.CreatedAt })
+            .ToListAsync();
+
+        return rows
+            .GroupBy(r => r.Isin!)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(r => r.CreatedAt).First().Symbol,
+                StringComparer.Ordinal);
     }
 }

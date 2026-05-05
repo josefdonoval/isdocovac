@@ -1,0 +1,177 @@
+@page "/imports/broker/{Id:guid}"
+@using System.Globalization
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Providers
+@using Isdocovac.Providers.Investments
+@using Isdocovac.Services.Authentication
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IBrokerImportProvider Imports
+@inject IShareProvider Shares
+@inject IAzureBlobStorageProvider Blob
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>Detail importu</PageTitle>
+
+<div class="container py-4" style="max-width: 1400px;">
+    @if (loading)
+    {
+        <div class="text-muted">Načítám…</div>
+    }
+    else if (import == null)
+    {
+        <div class="alert alert-warning">Import nenalezen.</div>
+    }
+    else
+    {
+        <h1>Import #@Id.ToString()[..8]</h1>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-3"><strong>Broker:</strong><br />@BrokerLabel.For(import.Broker)</div>
+            <div class="col-md-3"><strong>Soubor:</strong><br />@import.FileName</div>
+            <div class="col-md-3"><strong>Velikost:</strong><br />@FormatSize(import.FileSize)</div>
+            <div class="col-md-3"><strong>Stav:</strong><br />@StatusLabel(import.Status)</div>
+            <div class="col-md-3"><strong>Nahráno:</strong><br />@import.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+            <div class="col-md-3"><strong>Importováno:</strong><br />@(import.ImportedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</div>
+            <div class="col-md-3"><strong>Řádků:</strong><br />@import.RowsTotal (importováno @import.RowsImported, dup @import.RowsDuplicate)</div>
+            <div class="col-md-3"><strong>Hash:</strong><br /><span class="font-monospace small">@import.FileHash[..16]…</span></div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(import.ErrorMessage))
+        {
+            <div class="alert alert-danger"><strong>Chyba:</strong> @import.ErrorMessage</div>
+        }
+
+        <div class="d-flex gap-2 mb-4 flex-wrap">
+            @if (import.Status != BrokerImportStatus.Imported)
+            {
+                <a class="btn btn-primary" href="@($"/imports/broker/new?resume={import.Id}")">
+                    Pokračovat ve výběru řádků
+                </a>
+            }
+            <button type="button" class="btn btn-outline-primary" @onclick="DownloadAsync" disabled="@busy">
+                Stáhnout originál
+            </button>
+            <a class="btn btn-outline-secondary" href="/imports/broker">Zpět na historii</a>
+            <a class="btn btn-outline-secondary" href="/shares">Akcie</a>
+        </div>
+
+        <h3>Importované obchody (@trades.Count)</h3>
+        @if (trades.Count == 0)
+        {
+            <div class="alert alert-light">Tento import ještě nebyl dokončen, nebo všechny řádky byly přeskočeny.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered small align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Symbol</th>
+                            <th>ISIN</th>
+                            <th>Datum</th>
+                            <th class="text-end">Qty</th>
+                            <th>Měna</th>
+                            <th class="text-end">Cena</th>
+                            <th class="text-end">Fee</th>
+                            <th>Code</th>
+                            <th class="text-end">Basis</th>
+                            <th>CNB</th>
+                            <th class="text-end">Basis CZK</th>
+                            <th>Order ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in trades)
+                        {
+                            <tr>
+                                <td><a href="@($"/shares/{t.Id}/edit")">@t.Symbol</a></td>
+                                <td class="font-monospace">@t.Isin</td>
+                                <td>@t.TradeDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                <td class="text-end">@FmtPrice(t.Quantity)</td>
+                                <td>@t.Currency</td>
+                                <td class="text-end">@FmtPrice(t.TradePrice)</td>
+                                <td class="text-end">@Fmt(t.CommissionFee)</td>
+                                <td>@(t.Code == ShareTradeCode.Buy ? "B" : "S")</td>
+                                <td class="text-end">@Fmt(t.Basis)</td>
+                                <td>@t.CnbDate.ToString("yyyy-MM-dd")</td>
+                                <td class="text-end">@Fmt(t.BasisCzk)</td>
+                                <td class="font-monospace small">@Truncate(t.ExternalOrderId, 12)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool loading = true;
+    private bool busy;
+    private BrokerImport? import;
+    private List<Share> trades = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var companyId = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (companyId == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        import = await Imports.GetAsync(Id);
+        if (import != null && import.CompanyId != companyId.Value)
+        {
+            import = null;
+        }
+        if (import != null)
+        {
+            var list = await Shares.ListByImportAsync(Id);
+            trades = list.ToList();
+        }
+        loading = false;
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (import == null) return;
+        busy = true;
+        try
+        {
+            var url = await Blob.GenerateSasUrlAsync(import.BlobContainerName, import.BlobName, expirationMinutes: 5);
+            Nav.NavigateTo(url, forceLoad: true);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string Fmt(decimal v) => v.ToString("N2", CultureInfo.InvariantCulture);
+    private static string FmtPrice(decimal v) => v.ToString("0.######", CultureInfo.InvariantCulture);
+    private static string Truncate(string? s, int max) => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max) + "…");
+
+    private static string FormatSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1) { order++; len /= 1024; }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private static string StatusLabel(BrokerImportStatus s) => s switch
+    {
+        BrokerImportStatus.Pending => "Čeká na náhled",
+        BrokerImportStatus.Parsed => "Naparsováno",
+        BrokerImportStatus.Imported => "Importováno",
+        BrokerImportStatus.Failed => "Chyba",
+        _ => s.ToString()
+    };
+}

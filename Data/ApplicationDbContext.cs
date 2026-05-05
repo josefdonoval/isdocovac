@@ -45,6 +45,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<OptionTrade> OptionTrades { get; set; }
     public DbSet<Share> Shares { get; set; }
     public DbSet<ShareQuote> ShareQuotes { get; set; }
+    public DbSet<BrokerImport> BrokerImports { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -241,6 +242,25 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasIndex(e => new { e.CompanyId, e.TradeDateTime });
             entity.HasIndex(e => new { e.CompanyId, e.Symbol });
+            entity.HasIndex(e => e.BrokerImportId);
+            // Non-unique: brokers (e.g. Degiro) reuse a single Order ID across multi-fill rows.
+            // Dedup happens at the application layer in BrokerImportService.
+            entity.HasIndex(e => new { e.CompanyId, e.Broker, e.ExternalOrderId });
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.BrokerImport)
+                .WithMany()
+                .HasForeignKey(e => e.BrokerImportId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // BrokerImport configuration
+        modelBuilder.Entity<BrokerImport>(entity =>
+        {
+            entity.HasIndex(e => new { e.CompanyId, e.UploadedAt });
+            entity.HasIndex(e => new { e.CompanyId, e.FileHash }).IsUnique();
             entity.HasOne(e => e.Company)
                 .WithMany()
                 .HasForeignKey(e => e.CompanyId)

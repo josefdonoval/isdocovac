@@ -1,0 +1,349 @@
+@page "/imports/broker/new"
+@using System.Globalization
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Investments.BrokerImport
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IBrokerImportService ImportService
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>Import obchodů od brokera</PageTitle>
+
+<div class="container py-4" style="max-width: 1500px;">
+    <h1>Import obchodů od brokera</h1>
+    <p class="text-muted">Nahraj export ze svého brokera (CSV). Soubor se uloží, deduplikuje a zobrazí náhled k potvrzení.</p>
+
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger">
+            @errorMessage
+            @if (existingImportId.HasValue)
+            {
+                <a class="alert-link ms-2" href="@($"/imports/broker/new?resume={existingImportId.Value}")">Pokračovat ve výběru řádků</a>
+                <a class="alert-link ms-2" href="@($"/imports/broker/{existingImportId.Value}")">Detail</a>
+            }
+        </div>
+    }
+    @if (statusMessage != null)
+    {
+        <div class="alert alert-success">@statusMessage</div>
+    }
+
+    @if (preview == null)
+    {
+        <EditForm Model="this" OnValidSubmit="UploadAndParseAsync">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Broker (zdroj) *</label>
+                    <select class="form-select" @bind="selectedBroker" disabled="@busy">
+                        @foreach (var b in (Broker[])Enum.GetValues(typeof(Broker)))
+                        {
+                            <option value="@b">@BrokerLabel.For(b)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Soubor *</label>
+                    <InputFile class="form-control" OnChange="OnFileChanged" accept=".csv,.txt" disabled="@busy" />
+                    @if (selectedFile != null)
+                    {
+                        <div class="form-text">@selectedFile.Name (@FormatSize(selectedFile.Size))</div>
+                    }
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" disabled="@(busy || selectedFile == null)">
+                @(busy ? "Zpracovávám…" : "Nahrát a zobrazit náhled")
+            </button>
+            <a class="btn btn-outline-secondary ms-2" href="/imports/broker">Historie importů</a>
+        </EditForm>
+
+        <div class="alert alert-info mt-4 small">
+            <strong>Podporované zdroje:</strong> DEGIRO (CSV export <em>Transactions.csv</em>). Ostatní brokeři budou přidáni postupně.
+        </div>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+            <div><strong>Soubor:</strong> @import!.FileName (@FormatSize(import.FileSize))</div>
+            <div><strong>Broker:</strong> @BrokerLabel.For(import.Broker)</div>
+            <div><strong>Řádků celkem:</strong> @preview.Rows.Count</div>
+            <div><strong>Vybráno:</strong> @selectedCount</div>
+            <div><strong>Duplicit:</strong> @preview.Rows.Count(r => r.DuplicateLocked)</div>
+        </div>
+
+        <div class="d-flex gap-2 mb-3">
+            <button type="button" class="btn btn-primary" @onclick="ImportAsync" disabled="@(busy || selectedCount == 0)">
+                @(busy ? "Importuji…" : $"Importovat ({selectedCount})")
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ResetAsync" disabled="@busy">Začít znovu</button>
+            <a class="btn btn-outline-secondary" href="/imports/broker">Historie</a>
+        </div>
+
+        @if (preview.Warnings.Count > 0)
+        {
+            <div class="alert alert-warning">
+                <strong>Upozornění:</strong>
+                <ul class="mb-0">
+                    @foreach (var w in preview.Warnings) { <li>@w</li> }
+                </ul>
+            </div>
+        }
+
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered small align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>☑</th>
+                        <th>#</th>
+                        <th>ISIN</th>
+                        <th>Symbol</th>
+                        <th>Produkt</th>
+                        <th>Datum</th>
+                        <th class="text-end">Qty</th>
+                        <th>Měna</th>
+                        <th class="text-end">Cena</th>
+                        <th class="text-end">Fee EUR</th>
+                        <th class="text-end">Fee&nbsp;@(import.Broker)</th>
+                        <th>Order ID</th>
+                        <th>CNB</th>
+                        <th class="text-end">FX</th>
+                        <th class="text-end">Basis CZK</th>
+                        <th>Stav</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int i = 0; i < preview.Rows.Count; i++)
+                    {
+                        var row = preview.Rows[i];
+                        var rowClass = row.Error != null ? "table-danger"
+                            : row.DuplicateLocked ? "table-secondary"
+                            : !row.DefaultSelected ? "table-warning"
+                            : "";
+                        <tr class="@rowClass">
+                            <td>
+                                <input type="checkbox" class="form-check-input"
+                                       checked="@row.DefaultSelected"
+                                       disabled="@(row.DuplicateLocked || row.Error != null || row.Trade == null)"
+                                       @onchange="e => OnRowToggle(row, e)" />
+                            </td>
+                            <td>@row.LineNumber</td>
+                            <td class="font-monospace">@row.Isin</td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm" value="@row.Symbol"
+                                       @oninput="e => OnSymbolChanged(row, e)"
+                                       disabled="@(row.DuplicateLocked)" />
+                            </td>
+                            <td title="@row.ProductName">@Truncate(row.ProductName, 28)</td>
+                            <td>@row.TradeDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td class="text-end">@FmtPrice(row.SignedQuantity)</td>
+                            <td>@row.Currency</td>
+                            <td class="text-end">@FmtPrice(row.TradePrice)</td>
+                            <td class="text-end">@Fmt(row.CommissionFeeEur)</td>
+                            <td class="text-end">@Fmt(row.CommissionFeeTradeCurrency)</td>
+                            <td class="font-monospace small">@Truncate(row.ExternalOrderId, 12)</td>
+                            <td>@(row.Trade?.CnbDate.ToString("yyyy-MM-dd") ?? "—")</td>
+                            <td class="text-end">@(row.Trade != null ? FmtRate(row.Trade.FxRate) : "—")</td>
+                            <td class="text-end">@(row.Trade != null ? Fmt(row.Trade.BasisCzk) : "—")</td>
+                            <td>@row.Status</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private const long MaxFileSize = 20 * 1024 * 1024;
+
+    [SupplyParameterFromQuery(Name = "resume")]
+    private Guid? ResumeId { get; set; }
+
+    private Guid companyId;
+    private Broker selectedBroker = Broker.Degiro;
+    private IBrowserFile? selectedFile;
+    private bool busy;
+    private string? errorMessage;
+    private string? statusMessage;
+    private Guid? existingImportId;
+
+    private BrokerImport? import;
+    private BrokerImportPreview? preview;
+    private int selectedCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var active = await CurrentCompanyAccessor.GetActiveCompanyIdAsync();
+        if (active == null)
+        {
+            Nav.NavigateTo("/companies/new", forceLoad: true);
+            return;
+        }
+        companyId = active.Value;
+
+        if (ResumeId.HasValue)
+        {
+            await ResumeAsync(ResumeId.Value);
+        }
+    }
+
+    private async Task ResumeAsync(Guid id)
+    {
+        busy = true;
+        try
+        {
+            preview = await ImportService.ParseAsync(id);
+            import = preview.Import;
+            if (import.CompanyId != companyId)
+            {
+                preview = null;
+                import = null;
+                errorMessage = "Tento import patří jiné firmě.";
+                return;
+            }
+            if (import.Status == BrokerImportStatus.Imported)
+            {
+                preview = null;
+                import = null;
+                errorMessage = "Tento import už byl dokončený.";
+                return;
+            }
+            RecalcSelectedCount();
+            statusMessage = $"Navazuji na rozparsovaný soubor {import.FileName}.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Nelze obnovit import: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private void OnFileChanged(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        errorMessage = null;
+        existingImportId = null;
+    }
+
+    private async Task UploadAndParseAsync()
+    {
+        if (selectedFile == null) return;
+        if (selectedFile.Size > MaxFileSize)
+        {
+            errorMessage = $"Soubor je větší než {FormatSize(MaxFileSize)}.";
+            return;
+        }
+
+        busy = true;
+        errorMessage = null;
+        existingImportId = null;
+        statusMessage = null;
+        try
+        {
+            await using var stream = selectedFile.OpenReadStream(MaxFileSize);
+            var (entity, existing) = await ImportService.UploadAsync(
+                companyId, selectedBroker, selectedFile.Name, selectedFile.Size,
+                string.IsNullOrEmpty(selectedFile.ContentType) ? "text/csv" : selectedFile.ContentType,
+                stream);
+
+            if (existing != null)
+            {
+                existingImportId = existing.Id;
+                errorMessage = $"Tento soubor už byl nahraný {existing.UploadedAt:yyyy-MM-dd HH:mm}.";
+                return;
+            }
+
+            import = entity;
+            preview = await ImportService.ParseAsync(entity.Id);
+            RecalcSelectedCount();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Chyba: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private void OnRowToggle(BrokerImportPreviewRow row, ChangeEventArgs e)
+    {
+        if (row.DuplicateLocked || row.Error != null || row.Trade == null) return;
+        row.DefaultSelected = e.Value is bool b && b;
+        RecalcSelectedCount();
+    }
+
+    private void OnSymbolChanged(BrokerImportPreviewRow row, ChangeEventArgs e)
+    {
+        row.Symbol = (e.Value as string ?? string.Empty).Trim();
+        if (row.Trade != null)
+        {
+            row.Trade.Symbol = row.Symbol;
+        }
+    }
+
+    private void RecalcSelectedCount()
+    {
+        if (preview == null)
+        {
+            selectedCount = 0;
+            return;
+        }
+        selectedCount = preview.Rows.Count(r => r.DefaultSelected && !r.DuplicateLocked && r.Error == null && r.Trade != null);
+    }
+
+    private async Task ImportAsync()
+    {
+        if (preview == null || import == null) return;
+        busy = true;
+        errorMessage = null;
+        try
+        {
+            var inserted = await ImportService.ImportAsync(import.Id, preview.Rows);
+            statusMessage = $"Importováno {inserted} obchodů.";
+            Nav.NavigateTo($"/imports/broker/{import.Id}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Chyba importu: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private Task ResetAsync()
+    {
+        preview = null;
+        import = null;
+        selectedFile = null;
+        selectedCount = 0;
+        errorMessage = null;
+        statusMessage = null;
+        existingImportId = null;
+        return Task.CompletedTask;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1) { order++; len /= 1024; }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private static string Fmt(decimal v) => v.ToString("N2", CultureInfo.InvariantCulture);
+    private static string FmtPrice(decimal v) => v.ToString("0.######", CultureInfo.InvariantCulture);
+    private static string FmtRate(decimal v) => v.ToString("0.000", CultureInfo.InvariantCulture);
+    private static string Truncate(string? s, int max) => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max) + "…");
+}

@@ -11,6 +11,7 @@ using Isdocovac.Services.Vat;
 using Isdocovac.Providers.Fx;
 using Isdocovac.Providers.Investments;
 using Isdocovac.Services.Investments;
+using Isdocovac.Services.Investments.BrokerImport;
 using Isdocovac.Services.Claude;
 using Isdocovac.Services.Ares;
 using Isdocovac.Services.CodeLists;
@@ -141,6 +142,12 @@ builder.Services.AddHttpClient("Yahoo");
 builder.Services.AddScoped<IShareQuoteService, YahooQuoteService>();
 builder.Services.AddHttpClient("OpenFigi");
 builder.Services.AddScoped<ISecurityLookupService, OpenFigiSecurityLookupService>();
+
+// Broker imports (CSV/XLSX from Degiro, XTB, …)
+builder.Services.AddScoped<IBrokerImportProvider, BrokerImportProvider>();
+builder.Services.AddScoped<IBrokerImportParser, DegiroCsvParser>();
+builder.Services.AddScoped<ISymbolResolutionService, SymbolResolutionService>();
+builder.Services.AddScoped<IBrokerImportService, BrokerImportService>();
 
 var app = builder.Build();
 
