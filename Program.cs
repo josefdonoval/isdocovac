@@ -55,8 +55,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")),
-    ServiceLifetime.Scoped);
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Register application providers
 builder.Services.AddScoped<IUserProvider, UserProvider>();
