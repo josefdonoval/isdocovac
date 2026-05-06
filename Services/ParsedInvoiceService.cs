@@ -22,21 +22,21 @@ public class ParsedInvoiceService : IParsedInvoiceService
     private readonly IParsedInvoiceProvider _parsedInvoiceProvider;
     private readonly IParsedInvoiceProcessingProvider _processingProvider;
     private readonly IMainInvoiceProvider _invoiceProvider;
-    private readonly IPdfInvoiceProcessingService? _pdfProcessingService;
-    private readonly IIsdocXmlParsingService? _isdocXmlParsingService;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<ParsedInvoiceService> _logger;
 
     public ParsedInvoiceService(
         IParsedInvoiceProvider parsedInvoiceProvider,
         IParsedInvoiceProcessingProvider processingProvider,
         IMainInvoiceProvider invoiceProvider,
-        IPdfInvoiceProcessingService? pdfProcessingService = null,
-        IIsdocXmlParsingService? isdocXmlParsingService = null)
+        IServiceScopeFactory scopeFactory,
+        ILogger<ParsedInvoiceService> logger)
     {
         _parsedInvoiceProvider = parsedInvoiceProvider;
         _processingProvider = processingProvider;
         _invoiceProvider = invoiceProvider;
-        _pdfProcessingService = pdfProcessingService;
-        _isdocXmlParsingService = isdocXmlParsingService;
+        _scopeFactory = scopeFactory;
+        _logger = logger;
     }
 
     public async Task<ParsedInvoice> UploadIsdocAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null)
@@ -59,33 +59,39 @@ public class ParsedInvoiceService : IParsedInvoiceService
         // Create initial processing attempt
         var processing = await _processingProvider.CreateProcessingAsync(parsedInvoice.Id, 1);
 
-        if (isPdf && _pdfProcessingService != null)
+        var parsedInvoiceId = parsedInvoice.Id;
+        var processingId = processing.Id;
+
+        if (isPdf)
         {
-            // Process PDF asynchronously (fire and forget)
+            // Background processing runs in its own DI scope so the DbContext outlives the request scope.
             _ = Task.Run(async () =>
             {
+                using var scope = _scopeFactory.CreateScope();
                 try
                 {
-                    await _pdfProcessingService.ProcessPdfInvoiceAsync(parsedInvoice.Id, processing.Id);
+                    var pdfService = scope.ServiceProvider.GetRequiredService<IPdfInvoiceProcessingService>();
+                    await pdfService.ProcessPdfInvoiceAsync(parsedInvoiceId, processingId);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Errors are already logged in PdfInvoiceProcessingService
+                    _logger.LogError(ex, "Background PDF processing failed for {ParsedInvoiceId}", parsedInvoiceId);
                 }
             });
         }
-        else if (!isPdf && _isdocXmlParsingService != null)
+        else
         {
-            // Process ISDOC XML asynchronously (fire and forget)
             _ = Task.Run(async () =>
             {
+                using var scope = _scopeFactory.CreateScope();
                 try
                 {
-                    await _isdocXmlParsingService.ProcessIsdocXmlAsync(parsedInvoice.Id, processing.Id);
+                    var xmlService = scope.ServiceProvider.GetRequiredService<IIsdocXmlParsingService>();
+                    await xmlService.ProcessIsdocXmlAsync(parsedInvoiceId, processingId);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Errors are already logged in IsdocXmlParsingService
+                    _logger.LogError(ex, "Background ISDOC XML processing failed for {ParsedInvoiceId}", parsedInvoiceId);
                 }
             });
         }

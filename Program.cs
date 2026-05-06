@@ -15,7 +15,6 @@ using Isdocovac.Services.Investments.BrokerImport;
 using Isdocovac.Services.Claude;
 using Isdocovac.Services.Ares;
 using Isdocovac.Services.CodeLists;
-using Isdocovac.Services.OpenAI;
 using Isdocovac.Services.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -104,7 +103,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddHttpClient("Claude");
 
 // Register Claude invoice parsing service
-builder.Services.AddScoped<IOpenAIInvoiceParsingService, ClaudeInvoiceParsingService>();
+builder.Services.AddScoped<IInvoiceParsingService, ClaudeInvoiceParsingService>();
 
 // Register ISDOC services
 builder.Services.AddScoped<IIsdocGeneratorService, IsdocGeneratorService>();

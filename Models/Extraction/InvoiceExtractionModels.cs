@@ -1,9 +1,9 @@
 using Isdocovac.Models.Enums;
 
-namespace Isdocovac.Models.OpenAI;
+namespace Isdocovac.Models.Extraction;
 
 /// <summary>
-/// Request for invoice data extraction from OpenAI.
+/// Request for invoice data extraction.
 /// </summary>
 public class InvoiceExtractionRequest
 {
@@ -12,7 +12,7 @@ public class InvoiceExtractionRequest
 }
 
 /// <summary>
-/// Result of invoice data extraction from OpenAI.
+/// Result of invoice data extraction.
 /// </summary>
 public class InvoiceExtractionResult
 {
@@ -48,7 +48,7 @@ public class InvoiceExtractionResult
     public string? Iban { get; set; }
     public string? Note { get; set; }
 
-    // OpenAI Metadata
+    // Extraction metadata
     public int PromptTokens { get; set; }
     public int CompletionTokens { get; set; }
     public string Model { get; set; } = string.Empty;

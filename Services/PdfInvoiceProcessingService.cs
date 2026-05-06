@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Isdocovac.Models.Enums;
 using Isdocovac.Providers;
+using Isdocovac.Services.Claude;
 using Isdocovac.Services.ISDOC;
-using Isdocovac.Services.OpenAI;
 
 namespace Isdocovac.Services;
 
@@ -17,7 +17,7 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
     private readonly IParsedInvoiceProvider _parsedInvoiceProvider;
     private readonly IParsedInvoiceProcessingProvider _processingProvider;
     private readonly IAzureBlobStorageProvider _blobStorageProvider;
-    private readonly IOpenAIInvoiceParsingService _openAiService;
+    private readonly IInvoiceParsingService _invoiceParsingService;
     private readonly IIsdocGeneratorService _isdocGenerator;
     private readonly IIsdocValidationService _isdocValidator;
     private readonly ILogger<PdfInvoiceProcessingService> _logger;
@@ -26,7 +26,7 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
         IParsedInvoiceProvider parsedInvoiceProvider,
         IParsedInvoiceProcessingProvider processingProvider,
         IAzureBlobStorageProvider blobStorageProvider,
-        IOpenAIInvoiceParsingService openAiService,
+        IInvoiceParsingService invoiceParsingService,
         IIsdocGeneratorService isdocGenerator,
         IIsdocValidationService isdocValidator,
         ILogger<PdfInvoiceProcessingService> logger)
@@ -34,7 +34,7 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
         _parsedInvoiceProvider = parsedInvoiceProvider;
         _processingProvider = processingProvider;
         _blobStorageProvider = blobStorageProvider;
-        _openAiService = openAiService;
+        _invoiceParsingService = invoiceParsingService;
         _isdocGenerator = isdocGenerator;
         _isdocValidator = isdocValidator;
         _logger = logger;
@@ -71,7 +71,7 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
             try
             {
                 using var pdfStream = await _blobStorageProvider.DownloadBlobAsync(parsedInvoice.BlobContainerName, parsedInvoice.BlobName);
-                openAiFileId = await _openAiService.UploadPdfToOpenAIAsync(pdfStream, parsedInvoice.FileName);
+                openAiFileId = await _invoiceParsingService.UploadPdfAsync(pdfStream, parsedInvoice.FileName);
                 _logger.LogInformation("PDF uploaded to OpenAI: {FileId}", openAiFileId);
             }
             catch (Exception ex)
@@ -84,10 +84,10 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
             // Step 2: Extract data with OpenAI
             await _processingProvider.UpdateCurrentStepAsync(processingId, "ExtractingData");
 
-            Models.OpenAI.InvoiceExtractionResult extractionResult;
+            Models.Extraction.InvoiceExtractionResult extractionResult;
             try
             {
-                extractionResult = await _openAiService.ExtractInvoiceDataAsync(openAiFileId, parsedInvoice.LineMode.Value);
+                extractionResult = await _invoiceParsingService.ExtractInvoiceDataAsync(openAiFileId, parsedInvoice.LineMode.Value);
 
                 if (!extractionResult.Success || string.IsNullOrEmpty(extractionResult.InvoiceNumber))
                 {
@@ -204,7 +204,7 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
             {
                 try
                 {
-                    await _openAiService.DeleteFileFromOpenAIAsync(openAiFileId);
+                    await _invoiceParsingService.DeleteFileAsync(openAiFileId);
                 }
                 catch (Exception ex)
                 {
@@ -240,7 +240,7 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
 
     private async Task UpdateParsedInvoiceData(
         Guid parsedInvoiceId,
-        Models.OpenAI.InvoiceExtractionResult extraction,
+        Models.Extraction.InvoiceExtractionResult extraction,
         bool isValid,
         string? validationErrors)
     {

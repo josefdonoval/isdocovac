@@ -2,7 +2,7 @@ using System.Xml.Linq;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Isdocovac.Models.OpenAI;
+using Isdocovac.Models.Extraction;
 using Isdocovac.Services.ISDOC;
 
 namespace Isdocovac.Tests.Services.ISDOC;

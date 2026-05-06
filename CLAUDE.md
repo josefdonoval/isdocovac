@@ -25,6 +25,10 @@ dotnet watch
 dotnet clean
 ```
 
+## Dev Auto-Login
+
+In Development, navigating to `/auth/dev-login` signs you in as the email configured under `Authentication:DevAutoLogin` in `appsettings.Development.json` (when `Enabled: true`). Use this when verifying flows from a preview/dev server — you do not need a magic link. The page is implemented in [Components/Pages/Auth/DevLogin.razor](Components/Pages/Auth/DevLogin.razor) and is gated on `IWebHostEnvironment.IsDevelopment()`.
+
 ## Project Structure and Architecture
 
 ### Core Application Setup

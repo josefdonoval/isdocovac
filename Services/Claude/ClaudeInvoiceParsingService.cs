@@ -3,12 +3,11 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Isdocovac.Models.Enums;
-using Isdocovac.Models.OpenAI;
-using Isdocovac.Services.OpenAI;
+using Isdocovac.Models.Extraction;
 
 namespace Isdocovac.Services.Claude;
 
-public class ClaudeInvoiceParsingService : IOpenAIInvoiceParsingService
+public class ClaudeInvoiceParsingService : IInvoiceParsingService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
@@ -40,7 +39,7 @@ public class ClaudeInvoiceParsingService : IOpenAIInvoiceParsingService
     /// Claude doesn't need a file upload step — PDFs are sent inline as base64.
     /// This method reads the PDF into memory and returns the base64 string as the "file ID".
     /// </summary>
-    public async Task<string> UploadPdfToOpenAIAsync(Stream pdfStream, string filename)
+    public async Task<string> UploadPdfAsync(Stream pdfStream, string filename)
     {
         _logger.LogInformation("Encoding PDF for Claude: {Filename}", filename);
 
@@ -167,7 +166,7 @@ public class ClaudeInvoiceParsingService : IOpenAIInvoiceParsingService
     /// <summary>
     /// No-op for Claude — there are no uploaded files to clean up.
     /// </summary>
-    public Task DeleteFileFromOpenAIAsync(string fileId)
+    public Task DeleteFileAsync(string fileId)
     {
         _logger.LogDebug("Claude does not require file cleanup (PDF was sent inline)");
         return Task.CompletedTask;

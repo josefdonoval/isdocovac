@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Xml.Linq;
-using Isdocovac.Models.OpenAI;
+using Isdocovac.Models.Extraction;
 
 namespace Isdocovac.Services.ISDOC;
 

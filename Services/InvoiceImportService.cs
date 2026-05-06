@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
-using Isdocovac.Models.OpenAI;
+using Isdocovac.Models.Extraction;
 using Isdocovac.Providers;
 using Microsoft.EntityFrameworkCore;
 

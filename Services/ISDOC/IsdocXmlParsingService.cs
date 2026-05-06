@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
-using Isdocovac.Models.OpenAI;
+using Isdocovac.Models.Extraction;
 using Isdocovac.Providers;
 
 namespace Isdocovac.Services.ISDOC;

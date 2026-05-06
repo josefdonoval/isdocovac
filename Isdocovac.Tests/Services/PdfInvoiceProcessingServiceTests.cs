@@ -3,11 +3,11 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
-using Isdocovac.Models.OpenAI;
+using Isdocovac.Models.Extraction;
 using Isdocovac.Providers;
 using Isdocovac.Services;
 using Isdocovac.Services.ISDOC;
-using Isdocovac.Services.OpenAI;
+using Isdocovac.Services.Claude;
 
 namespace Isdocovac.Tests.Services;
 
@@ -16,7 +16,7 @@ public class PdfInvoiceProcessingServiceTests
     private readonly Mock<IParsedInvoiceProvider> _parsedInvoiceProviderMock;
     private readonly Mock<IParsedInvoiceProcessingProvider> _processingProviderMock;
     private readonly Mock<IAzureBlobStorageProvider> _blobStorageProviderMock;
-    private readonly Mock<IOpenAIInvoiceParsingService> _openAIServiceMock;
+    private readonly Mock<IInvoiceParsingService> _invoiceParsingServiceMock;
     private readonly Mock<IIsdocGeneratorService> _isdocGeneratorServiceMock;
     private readonly Mock<IIsdocValidationService> _validationServiceMock;
     private readonly Mock<ILogger<PdfInvoiceProcessingService>> _loggerMock;
@@ -27,7 +27,7 @@ public class PdfInvoiceProcessingServiceTests
         _parsedInvoiceProviderMock = new Mock<IParsedInvoiceProvider>();
         _processingProviderMock = new Mock<IParsedInvoiceProcessingProvider>();
         _blobStorageProviderMock = new Mock<IAzureBlobStorageProvider>();
-        _openAIServiceMock = new Mock<IOpenAIInvoiceParsingService>();
+        _invoiceParsingServiceMock = new Mock<IInvoiceParsingService>();
         _isdocGeneratorServiceMock = new Mock<IIsdocGeneratorService>();
         _validationServiceMock = new Mock<IIsdocValidationService>();
         _loggerMock = new Mock<ILogger<PdfInvoiceProcessingService>>();
@@ -36,7 +36,7 @@ public class PdfInvoiceProcessingServiceTests
             _parsedInvoiceProviderMock.Object,
             _processingProviderMock.Object,
             _blobStorageProviderMock.Object,
-            _openAIServiceMock.Object,
+            _invoiceParsingServiceMock.Object,
             _isdocGeneratorServiceMock.Object,
             _validationServiceMock.Object,
             _loggerMock.Object);
@@ -79,11 +79,11 @@ public class PdfInvoiceProcessingServiceTests
             .Setup(x => x.DownloadBlobAsync(parsedInvoice.BlobContainerName, parsedInvoice.BlobName))
             .ReturnsAsync(new MemoryStream(new byte[100]));
 
-        _openAIServiceMock
-            .Setup(x => x.UploadPdfToOpenAIAsync(It.IsAny<Stream>(), It.IsAny<string>()))
+        _invoiceParsingServiceMock
+            .Setup(x => x.UploadPdfAsync(It.IsAny<Stream>(), It.IsAny<string>()))
             .ReturnsAsync("file-id-123");
 
-        _openAIServiceMock
+        _invoiceParsingServiceMock
             .Setup(x => x.ExtractInvoiceDataAsync("file-id-123", InvoiceLineMode.Detailed))
             .ReturnsAsync(CreateSuccessfulExtraction());
 
@@ -164,8 +164,8 @@ public class PdfInvoiceProcessingServiceTests
             .Setup(x => x.DownloadBlobAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new MemoryStream(new byte[100]));
 
-        _openAIServiceMock
-            .Setup(x => x.UploadPdfToOpenAIAsync(It.IsAny<Stream>(), It.IsAny<string>()))
+        _invoiceParsingServiceMock
+            .Setup(x => x.UploadPdfAsync(It.IsAny<Stream>(), It.IsAny<string>()))
             .ThrowsAsync(new HttpRequestException("Upload failed"));
 
         var act = () => _sut.ProcessPdfInvoiceAsync(parsedInvoice.Id, processingId);
@@ -189,11 +189,11 @@ public class PdfInvoiceProcessingServiceTests
             .Setup(x => x.DownloadBlobAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new MemoryStream(new byte[100]));
 
-        _openAIServiceMock
-            .Setup(x => x.UploadPdfToOpenAIAsync(It.IsAny<Stream>(), It.IsAny<string>()))
+        _invoiceParsingServiceMock
+            .Setup(x => x.UploadPdfAsync(It.IsAny<Stream>(), It.IsAny<string>()))
             .ReturnsAsync("file-id-123");
 
-        _openAIServiceMock
+        _invoiceParsingServiceMock
             .Setup(x => x.ExtractInvoiceDataAsync(It.IsAny<string>(), It.IsAny<InvoiceLineMode>()))
             .ReturnsAsync(CreateSuccessfulExtraction());
 
@@ -221,8 +221,8 @@ public class PdfInvoiceProcessingServiceTests
 
         await _sut.ProcessPdfInvoiceAsync(parsedInvoice.Id, processingId);
 
-        _openAIServiceMock.Verify(
-            x => x.DeleteFileFromOpenAIAsync("file-id-123"), Times.Once);
+        _invoiceParsingServiceMock.Verify(
+            x => x.DeleteFileAsync("file-id-123"), Times.Once);
     }
 
     [Fact]
@@ -280,11 +280,11 @@ public class PdfInvoiceProcessingServiceTests
             .Setup(x => x.DownloadBlobAsync(It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(new MemoryStream(new byte[100]));
 
-        _openAIServiceMock
-            .Setup(x => x.UploadPdfToOpenAIAsync(It.IsAny<Stream>(), It.IsAny<string>()))
+        _invoiceParsingServiceMock
+            .Setup(x => x.UploadPdfAsync(It.IsAny<Stream>(), It.IsAny<string>()))
             .ReturnsAsync("file-id-456");
 
-        _openAIServiceMock
+        _invoiceParsingServiceMock
             .Setup(x => x.ExtractInvoiceDataAsync(It.IsAny<string>(), It.IsAny<InvoiceLineMode>()))
             .ReturnsAsync(CreateSuccessfulExtraction());
 

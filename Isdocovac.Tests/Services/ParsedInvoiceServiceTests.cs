@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
@@ -13,8 +15,6 @@ public class ParsedInvoiceServiceTests
     private readonly Mock<IParsedInvoiceProvider> _parsedInvoiceProviderMock;
     private readonly Mock<IParsedInvoiceProcessingProvider> _processingProviderMock;
     private readonly Mock<IMainInvoiceProvider> _mainInvoiceProviderMock;
-    private readonly Mock<IPdfInvoiceProcessingService> _pdfProcessingServiceMock;
-    private readonly Mock<IIsdocXmlParsingService> _isdocXmlParsingServiceMock;
     private readonly ParsedInvoiceService _sut;
 
     public ParsedInvoiceServiceTests()
@@ -22,15 +22,13 @@ public class ParsedInvoiceServiceTests
         _parsedInvoiceProviderMock = new Mock<IParsedInvoiceProvider>();
         _processingProviderMock = new Mock<IParsedInvoiceProcessingProvider>();
         _mainInvoiceProviderMock = new Mock<IMainInvoiceProvider>();
-        _pdfProcessingServiceMock = new Mock<IPdfInvoiceProcessingService>();
-        _isdocXmlParsingServiceMock = new Mock<IIsdocXmlParsingService>();
 
         _sut = new ParsedInvoiceService(
             _parsedInvoiceProviderMock.Object,
             _processingProviderMock.Object,
             _mainInvoiceProviderMock.Object,
-            _pdfProcessingServiceMock.Object,
-            _isdocXmlParsingServiceMock.Object);
+            Mock.Of<IServiceScopeFactory>(),
+            Mock.Of<ILogger<ParsedInvoiceService>>());
     }
 
     private static ParsedInvoice CreateTestParsedInvoice(
