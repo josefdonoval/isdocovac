@@ -83,8 +83,8 @@
                                 @onclick="() => GenerateQuarterDphAsync(year, quarter)" disabled="@busy">DPH</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm"
                                 @onclick="() => GenerateQuarterKhAsync(year, quarter)" disabled="@busy">Kontrolní hlášení</button>
-                        <button type="button" class="btn btn-outline-primary btn-sm"
-                                @onclick="() => PreviewQuarterAsync(year, quarter)" disabled="@busy">Náhled</button>
+                        <a class="btn btn-outline-primary btn-sm @(busy ? "disabled" : "")"
+                           href="/vat/preview/@year/q/@quarter">Náhled</a>
                     </div>
                 </div>
             }
@@ -108,8 +108,8 @@
                                     @onclick="() => GenerateDphAsync(year, m)" disabled="@busy">DPH</button>
                             <button type="button" class="btn btn-outline-secondary btn-sm"
                                     @onclick="() => GenerateKhAsync(year, m)" disabled="@busy">Kontrolní hlášení</button>
-                            <button type="button" class="btn btn-outline-primary btn-sm"
-                                    @onclick="() => PreviewAsync(year, m)" disabled="@busy">Náhled</button>
+                            <a class="btn btn-outline-primary btn-sm @(busy ? "disabled" : "")"
+                               href="/vat/preview/@year/m/@m">Náhled</a>
                         </div>
                     </div>
                 }
@@ -117,28 +117,6 @@
         }
     }
 
-    @if (report != null)
-    {
-        <h4 class="mt-4">Souhrn — @PeriodLabel(report)</h4>
-        <div class="table-responsive">
-            <table class="table table-sm">
-                <tbody>
-                    <tr><th>Obrat 21 % (ř. 1)</th><td>@Fmt(report.Obrat23) Kč</td><th>Daň 21 %</th><td>@Fmt(report.Dan23) Kč</td></tr>
-                    <tr><th>Obrat 12 % (ř. 2)</th><td>@Fmt(report.Obrat5) Kč</td><th>Daň 12 %</th><td>@Fmt(report.Dan5) Kč</td></tr>
-                    <tr><th>Služby z EU (ř. 5)</th><td>@Fmt(report.PSl23Eu) Kč</td><th>Daň</th><td>@Fmt(report.DanPSl23Eu) Kč</td></tr>
-                    <tr><th>Služby mimo EU (ř. 12)</th><td>@Fmt(report.PSl23NonEu) Kč</td><th>Daň</th><td>@Fmt(report.DanPSl23NonEu) Kč</td></tr>
-                    <tr><th>Tuzemské vstupy 21 % (ř. 40)</th><td>@Fmt(report.Pln23) Kč</td><th>Odpočet</th><td>@Fmt(report.OdpTuz23) Kč</td></tr>
-                    <tr><th>Reverse charge odpočet (ř. 43)</th><td>@Fmt(report.NarZdp23) Kč</td><th>Odpočet</th><td>@Fmt(report.OdZdp23) Kč</td></tr>
-                    <tr class="table-active"><th>Daň na výstupu celkem (ř. 62)</th><td>@Fmt(report.DanZocelk) Kč</td><th>Odpočet celkem (ř. 63)</th><td>@Fmt(report.OdpZocelk) Kč</td></tr>
-                    <tr class="table-warning"><th>Daň k úhradě (ř. 64)</th><td>@Fmt(report.DanoDa) Kč</td><th>Nadměrný odpočet (ř. 65)</th><td>@Fmt(report.DanoNo) Kč</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="small text-muted">
-            KH rows: A2 = @report.A2Rows.Count, A4 = @report.A4Rows.Count, B2 = @report.B2Rows.Count.
-            A5 agregát: @Fmt(report.A5Aggregate.Base23) Kč, B3 agregát: @Fmt(report.B3Aggregate.Base23) Kč.
-        </div>
-    }
 </div>
 
 @code {
@@ -235,20 +213,6 @@
         }
     }
 
-    private async Task PreviewAsync(int y, int m)
-    {
-        busy = true;
-        try { report = await BuildReportAsync(y, m); }
-        finally { busy = false; }
-    }
-
-    private async Task PreviewQuarterAsync(int y, int q)
-    {
-        busy = true;
-        try { report = await BuildQuarterReportAsync(y, q); }
-        finally { busy = false; }
-    }
-
     private async Task GenerateDphAsync(int y, int m)
     {
         busy = true;
@@ -331,9 +295,6 @@
         var m = DateTime.Now.Month;
         return q == ((m - 1) / 3) + 1;
     }
-
-    private static string PeriodLabel(VatMonthlyReport r)
-        => r.IsQuarterly ? $"{r.Quarter}. čtvrtletí {r.Year}" : $"{MonthName(r.Month)} {r.Year}";
 
     private static string Fmt(decimal value) =>
         value.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"));

@@ -1,0 +1,332 @@
+@page "/vat/preview/{Year:int}/m/{Month:int}"
+@page "/vat/preview/{Year:int}/q/{Quarter:int}"
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Models.Vat
+@using Isdocovac.Providers
+@using Isdocovac.Services.Vat
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject IMainInvoiceProvider InvoiceProvider
+@inject IVatCalculationService VatCalculationService
+@inject IDphXmlGeneratorService DphGenerator
+@inject IKhXmlGeneratorService KhGenerator
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Náhled DPH — @PeriodTitle()</PageTitle>
+
+<div class="container py-4" style="max-width: 1100px;">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <a href="/vat/monthly" class="text-decoration-none">‹ Zpět na přehled</a>
+            <h3 class="mb-0 mt-1">Náhled — @PeriodTitle()</h3>
+        </div>
+        @if (report != null)
+        {
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        @onclick="DownloadDphAsync" disabled="@busy">Stáhnout DPH (XML)</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        @onclick="DownloadKhAsync" disabled="@busy">Stáhnout Kontrolní hlášení (XML)</button>
+            </div>
+        }
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-muted">Načítám…</div>
+    }
+
+    @if (!string.IsNullOrEmpty(infoMessage))
+    {
+        <div class="alert alert-info">@infoMessage</div>
+    }
+
+    @if (errors.Count > 0)
+    {
+        <div class="alert alert-danger">
+            <strong>Chyby validace:</strong>
+            <ul class="mb-0">
+                @foreach (var err in errors)
+                {
+                    <li>@err</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (missingDuzp.Count > 0)
+    {
+        <div class="alert alert-warning">
+            <strong>Chybí DUZP (@missingDuzp.Count):</strong>
+            <ul class="mb-0">
+                @foreach (var inv in missingDuzp)
+                {
+                    <li>
+                        @(inv.Direction == InvoiceDirection.Outbound ? "Vydaná" : "Přijatá")
+                        <a href="/invoices/@inv.Id">@inv.Number</a> — @(inv.IssuedOn?.ToString("yyyy-MM-dd") ?? "?")
+                    </li>
+                }
+            </ul>
+            <div class="small mt-1">Tyto faktury vyžadují DUZP a nezapočítají se do DPH dokud nebude vyplněna.</div>
+        </div>
+    }
+
+    @if (report != null)
+    {
+        <h4 class="mt-4">Souhrn</h4>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <tbody>
+                    <tr><th>Obrat 21 % (ř. 1)</th><td>@Fmt(report.Obrat23) Kč</td><th>Daň 21 %</th><td>@Fmt(report.Dan23) Kč</td></tr>
+                    <tr><th>Obrat 12 % (ř. 2)</th><td>@Fmt(report.Obrat5) Kč</td><th>Daň 12 %</th><td>@Fmt(report.Dan5) Kč</td></tr>
+                    <tr><th>Služby z EU (ř. 5)</th><td>@Fmt(report.PSl23Eu) Kč</td><th>Daň</th><td>@Fmt(report.DanPSl23Eu) Kč</td></tr>
+                    <tr><th>Služby mimo EU (ř. 12)</th><td>@Fmt(report.PSl23NonEu) Kč</td><th>Daň</th><td>@Fmt(report.DanPSl23NonEu) Kč</td></tr>
+                    <tr><th>Tuzemské vstupy 21 % (ř. 40)</th><td>@Fmt(report.Pln23) Kč</td><th>Odpočet</th><td>@Fmt(report.OdpTuz23) Kč</td></tr>
+                    <tr><th>Reverse charge odpočet (ř. 43)</th><td>@Fmt(report.NarZdp23) Kč</td><th>Odpočet</th><td>@Fmt(report.OdZdp23) Kč</td></tr>
+                    <tr class="table-active"><th>Daň na výstupu celkem (ř. 62)</th><td>@Fmt(report.DanZocelk) Kč</td><th>Odpočet celkem (ř. 63)</th><td>@Fmt(report.OdpZocelk) Kč</td></tr>
+                    <tr class="table-warning"><th>Daň k úhradě (ř. 64)</th><td>@Fmt(report.DanoDa) Kč</td><th>Nadměrný odpočet (ř. 65)</th><td>@Fmt(report.DanoNo) Kč</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="small text-muted mb-4">
+            KH řádky: A2 = @report.A2Rows.Count, A4 = @report.A4Rows.Count, B2 = @report.B2Rows.Count.
+            A5 agregát: @Fmt(report.A5Aggregate.Base23) Kč, B3 agregát: @Fmt(report.B3Aggregate.Base23) Kč.
+        </div>
+    }
+
+    @if (categorizedInvoices.Count > 0)
+    {
+        <h4 class="mt-4">Faktury vstupující do výpočtu (@allInvoices.Count)</h4>
+        @foreach (var group in categorizedInvoices)
+        {
+            <h5 class="mt-3">@CategoryLabel(group.Key) <span class="badge bg-secondary">@group.Value.Count</span></h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Číslo</th>
+                            <th>DUZP</th>
+                            <th>Protistrana</th>
+                            <th>Země</th>
+                            <th>DIČ</th>
+                            <th class="text-end">Základ</th>
+                            <th class="text-end">DPH</th>
+                            <th class="text-end">Celkem</th>
+                            <th>Měna</th>
+                            <th>Sazby</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in group.Value)
+                        {
+                            <tr>
+                                <td><a href="/invoices/@row.Invoice.Id">@row.Invoice.Number</a></td>
+                                <td>@(row.Invoice.TaxableSupplyDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                                <td>@row.Counterparty</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.Country) ? "—" : row.Country)</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.Vat) ? "—" : row.Vat)</td>
+                                <td class="text-end">@Fmt(row.Invoice.Subtotal)</td>
+                                <td class="text-end">@Fmt(row.Invoice.Total - row.Invoice.Subtotal)</td>
+                                <td class="text-end">@Fmt(row.Invoice.Total)</td>
+                                <td>@row.Invoice.Currency</td>
+                                <td class="small text-muted">@row.RatesSummary</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int Year { get; set; }
+    [Parameter] public int? Month { get; set; }
+    [Parameter] public int? Quarter { get; set; }
+
+    private bool busy;
+    private bool loading = true;
+    private string? infoMessage;
+    private List<string> errors = new();
+    private VatMonthlyReport? report;
+    private List<Invoice> missingDuzp = new();
+    private List<Invoice> allInvoices = new();
+    private Dictionary<InvoiceCategory, List<InvoiceRow>> categorizedInvoices = new();
+
+    private Company? activeCompany;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        report = null;
+        errors.Clear();
+        infoMessage = null;
+        allInvoices = new();
+        categorizedInvoices = new();
+
+        try
+        {
+            activeCompany = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+            if (activeCompany == null)
+            {
+                NavigationManager.NavigateTo("/companies/new", forceLoad: true);
+                return;
+            }
+
+            missingDuzp = (await InvoiceProvider.GetInvoicesMissingRequiredDuzpAsync(activeCompany.Id, Year)).ToList();
+
+            List<Invoice> invoices;
+            if (Quarter.HasValue)
+            {
+                invoices = (await InvoiceProvider.GetVatQuarterInvoicesAsync(activeCompany.Id, Year, Quarter.Value)).ToList();
+            }
+            else if (Month.HasValue)
+            {
+                invoices = (await InvoiceProvider.GetVatMonthInvoicesAsync(activeCompany.Id, Year, Month.Value)).ToList();
+            }
+            else
+            {
+                infoMessage = "Neplatné období.";
+                return;
+            }
+
+            allInvoices = invoices;
+
+            if (invoices.Count == 0)
+            {
+                infoMessage = $"Žádné faktury pro {PeriodTitle()}.";
+                return;
+            }
+
+            try
+            {
+                report = Quarter.HasValue
+                    ? await VatCalculationService.BuildQuarterAsync(invoices, activeCompany, Year, Quarter.Value)
+                    : await VatCalculationService.BuildAsync(invoices, activeCompany, Year, Month!.Value);
+            }
+            catch (VatExportValidationException ex)
+            {
+                errors.AddRange(ex.Errors);
+            }
+
+            categorizedInvoices = invoices
+                .Select(i => new InvoiceRow(i, ClassifyInvoice(i),
+                    Counterparty: i.Direction == InvoiceDirection.Outbound ? (i.ClientName ?? "—") : (i.SupplierName ?? "—"),
+                    Country: (i.Direction == InvoiceDirection.Outbound ? i.ClientCountry : i.SupplierCountry) ?? string.Empty,
+                    Vat: (i.Direction == InvoiceDirection.Outbound ? i.ClientVatNo : i.SupplierVatNo) ?? string.Empty,
+                    RatesSummary: SummarizeRates(i.VatRatesSummary)))
+                .GroupBy(r => r.Category)
+                .OrderBy(g => (int)g.Key)
+                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.Invoice.TaxableSupplyDate).ThenBy(r => r.Invoice.Number).ToList());
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task DownloadDphAsync()
+    {
+        if (report == null) return;
+        busy = true;
+        try
+        {
+            var xml = DphGenerator.Generate(report);
+            var name = Quarter.HasValue ? $"dph-{Year}-Q{Quarter}.xml" : $"dph-{Year}-{Month}m.xml";
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText", name, xml, "application/xml");
+        }
+        finally { busy = false; }
+    }
+
+    private async Task DownloadKhAsync()
+    {
+        if (report == null) return;
+        busy = true;
+        try
+        {
+            var xml = KhGenerator.Generate(report);
+            var name = Quarter.HasValue ? $"kontrolni_hlaseni-{Year}-Q{Quarter}.xml" : $"kontrolni_hlaseni-{Year}-{Month}m.xml";
+            await JS.InvokeVoidAsync("isdocovacDownload.downloadText", name, xml, "application/xml");
+        }
+        finally { busy = false; }
+    }
+
+    private InvoiceCategory ClassifyInvoice(Invoice inv)
+    {
+        if (inv.Direction == InvoiceDirection.Outbound)
+        {
+            var country = inv.ClientCountry ?? string.Empty;
+            var domestic = string.IsNullOrWhiteSpace(country)
+                || string.Equals(country, "CZ", StringComparison.OrdinalIgnoreCase);
+            return domestic ? InvoiceCategory.OutboundDomestic : InvoiceCategory.OutboundForeign;
+        }
+        else
+        {
+            var country = inv.SupplierCountry ?? string.Empty;
+            var domestic = string.IsNullOrWhiteSpace(country)
+                || string.Equals(country, "CZ", StringComparison.OrdinalIgnoreCase);
+            if (domestic) return InvoiceCategory.InboundDomestic;
+            return EuCountries.IsEu(country) ? InvoiceCategory.InboundEu : InvoiceCategory.InboundNonEu;
+        }
+    }
+
+    private static string SummarizeRates(string? json)
+    {
+        try
+        {
+            var lines = VatRatesParser.Parse(json);
+            if (lines.Count == 0) return "—";
+            return string.Join(", ", lines
+                .GroupBy(l => l.VatRate)
+                .OrderBy(g => g.Key)
+                .Select(g => $"{g.Key:0.##}% ({Fmt(g.Sum(x => x.Base))})"));
+        }
+        catch
+        {
+            return "—";
+        }
+    }
+
+    private string PeriodTitle()
+    {
+        if (Quarter.HasValue) return $"{Quarter}. čtvrtletí {Year}";
+        if (Month.HasValue) return $"{MonthName(Month.Value)} {Year}";
+        return Year.ToString();
+    }
+
+    private static string CategoryLabel(InvoiceCategory c) => c switch
+    {
+        InvoiceCategory.OutboundDomestic => "Vydané — tuzemské (KH A4 / A5)",
+        InvoiceCategory.OutboundForeign => "Vydané — zahraniční (mimo Větu 1 v1)",
+        InvoiceCategory.InboundDomestic => "Přijaté — tuzemské (KH B2 / B3)",
+        InvoiceCategory.InboundEu => "Přijaté — služby z EU, reverse charge (ř. 5 / 43, KH A2)",
+        InvoiceCategory.InboundNonEu => "Přijaté — služby mimo EU, reverse charge (ř. 12 / 43, KH A2)",
+        _ => c.ToString(),
+    };
+
+    private static readonly string[] MonthNames =
+    {
+        "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
+        "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"
+    };
+
+    private static string MonthName(int m) => (m >= 1 && m <= 12) ? MonthNames[m - 1] : m.ToString();
+
+    private static string Fmt(decimal value) =>
+        value.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"));
+
+    private enum InvoiceCategory
+    {
+        OutboundDomestic = 1,
+        OutboundForeign = 2,
+        InboundDomestic = 3,
+        InboundEu = 4,
+        InboundNonEu = 5,
+    }
+
+    private record InvoiceRow(Invoice Invoice, InvoiceCategory Category, string Counterparty, string Country, string Vat, string RatesSummary);
+}
