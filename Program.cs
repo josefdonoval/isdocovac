@@ -51,11 +51,15 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Register Entity Framework DbContext with PostgreSQL
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Register Entity Framework DbContext with PostgreSQL.
+// DbContextFactory is registered as singleton (default) so its options are not
+// captured from a scoped IServiceProvider that may be disposed mid-flow.
+// Scoped ApplicationDbContext is produced via the factory so existing
+// constructor-injected providers keep working.
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<ApplicationDbContext>(sp =>
+    sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>().CreateDbContext());
 
 // Register application providers
 builder.Services.AddScoped<IUserProvider, UserProvider>();
