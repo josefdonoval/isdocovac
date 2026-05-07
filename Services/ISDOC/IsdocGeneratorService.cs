@@ -55,12 +55,6 @@ public class IsdocGeneratorService : IIsdocGeneratorService
                 AddPaymentMeans(invoice, extraction);
             }
 
-            // Add note if present
-            if (!string.IsNullOrEmpty(extraction.Note))
-            {
-                invoice.Add(new XElement(IsdocNamespace + "Note", extraction.Note));
-            }
-
             // Generate XML document
             var document = new XDocument(
                 new XDeclaration("1.0", "UTF-8", null),
@@ -97,7 +91,7 @@ public class IsdocGeneratorService : IIsdocGeneratorService
                 extraction.IssuedOn.Value.ToString("yyyy-MM-dd")));
         }
 
-        // Tax point date (DUZP)
+        // Tax point date (DUZP) — fall back to issue date if missing (common on foreign invoices)
         if (extraction.TaxableSupplyDate.HasValue)
         {
             invoice.Add(new XElement(IsdocNamespace + "TaxPointDate",
@@ -105,20 +99,32 @@ public class IsdocGeneratorService : IIsdocGeneratorService
         }
         else if (extraction.IssuedOn.HasValue)
         {
-            // Default to issue date if not specified
             invoice.Add(new XElement(IsdocNamespace + "TaxPointDate",
                 extraction.IssuedOn.Value.ToString("yyyy-MM-dd")));
         }
 
-        // Due date
-        if (extraction.DueOn.HasValue)
+        // VATApplicable: true when the invoice has any VAT-bearing line, false for foreign/non-VAT
+        var vatApplicable = extraction.VatRates.Any(r => r.VatRate > 0);
+        invoice.Add(new XElement(IsdocNamespace + "VATApplicable", vatApplicable ? "true" : "false"));
+
+        // ElectronicPossibilityAgreementReference is required by XSD; empty string is acceptable
+        invoice.Add(new XElement(IsdocNamespace + "ElectronicPossibilityAgreementReference", string.Empty));
+
+        // Note (optional)
+        if (!string.IsNullOrEmpty(extraction.Note))
         {
-            invoice.Add(new XElement(IsdocNamespace + "DueDate",
-                extraction.DueOn.Value.ToString("yyyy-MM-dd")));
+            invoice.Add(new XElement(IsdocNamespace + "Note", extraction.Note));
         }
 
-        // Currency code
-        invoice.Add(new XElement(IsdocNamespace + "LocalCurrencyCode", extraction.Currency ?? "CZK"));
+        // Currency
+        var localCurrency = extraction.Currency ?? "CZK";
+        invoice.Add(new XElement(IsdocNamespace + "LocalCurrencyCode", localCurrency));
+        if (localCurrency != "CZK")
+        {
+            invoice.Add(new XElement(IsdocNamespace + "ForeignCurrencyCode", localCurrency));
+        }
+        invoice.Add(new XElement(IsdocNamespace + "CurrRate", "1"));
+        invoice.Add(new XElement(IsdocNamespace + "RefCurrRate", "1"));
     }
 
     private void AddAccountingSupplierParty(XElement invoice, PartyDetails supplier)
@@ -394,38 +400,46 @@ public class IsdocGeneratorService : IIsdocGeneratorService
 
     private void AddPaymentMeans(XElement invoice, InvoiceExtractionResult extraction)
     {
-        var paymentMeans = new XElement(IsdocNamespace + "PaymentMeans");
-        var payment = new XElement(IsdocNamespace + "Payment");
+        // PaymentType requires PaidAmount + PaymentMeansCode; Details is optional.
+        var payment = new XElement(IsdocNamespace + "Payment",
+            new XElement(IsdocNamespace + "PaidAmount", FormatDecimal(extraction.Total ?? 0)),
+            new XElement(IsdocNamespace + "PaymentMeansCode", "42")); // 42 = money transfer
 
-        // Variable symbol
-        if (!string.IsNullOrEmpty(extraction.VariableSymbol))
+        // Details/money-transfer choice: PaymentDueDate + BankAccount group (ID, BankCode, Name, IBAN, BIC)
+        // are all required by the XSD. Only emit Details when we can satisfy the BankAccount group.
+        var (bankId, bankCode) = ParseCzechBankAccount(extraction.BankAccount);
+        var iban = extraction.Iban ?? string.Empty;
+        var canEmitBankAccount = !string.IsNullOrEmpty(bankId) && !string.IsNullOrEmpty(bankCode);
+
+        if (extraction.DueOn.HasValue && canEmitBankAccount)
         {
-            payment.Add(new XElement(IsdocNamespace + "PaidDepositsID", extraction.VariableSymbol));
-        }
+            var details = new XElement(IsdocNamespace + "Details",
+                new XElement(IsdocNamespace + "PaymentDueDate", extraction.DueOn.Value.ToString("yyyy-MM-dd")),
+                new XElement(IsdocNamespace + "ID", bankId),
+                new XElement(IsdocNamespace + "BankCode", bankCode),
+                new XElement(IsdocNamespace + "Name", string.Empty),
+                new XElement(IsdocNamespace + "IBAN", iban),
+                new XElement(IsdocNamespace + "BIC", string.Empty));
 
-        // Bank account details
-        var details = new XElement(IsdocNamespace + "Details");
+            if (!string.IsNullOrEmpty(extraction.VariableSymbol))
+                details.Add(new XElement(IsdocNamespace + "VariableSymbol", extraction.VariableSymbol));
+            if (!string.IsNullOrEmpty(extraction.ConstantSymbol))
+                details.Add(new XElement(IsdocNamespace + "ConstantSymbol", extraction.ConstantSymbol));
+            if (!string.IsNullOrEmpty(extraction.SpecificSymbol))
+                details.Add(new XElement(IsdocNamespace + "SpecificSymbol", extraction.SpecificSymbol));
 
-        if (!string.IsNullOrEmpty(extraction.BankAccount))
-        {
-            details.Add(new XElement(IsdocNamespace + "ID", extraction.BankAccount));
-        }
-
-        if (!string.IsNullOrEmpty(extraction.Iban))
-        {
-            details.Add(new XElement(IsdocNamespace + "IBAN", extraction.Iban));
-        }
-
-        if (details.HasElements)
-        {
             payment.Add(details);
         }
 
-        if (payment.HasElements)
-        {
-            paymentMeans.Add(payment);
-            invoice.Add(paymentMeans);
-        }
+        invoice.Add(new XElement(IsdocNamespace + "PaymentMeans", payment));
+    }
+
+    private static (string bankId, string bankCode) ParseCzechBankAccount(string? account)
+    {
+        if (string.IsNullOrWhiteSpace(account)) return (string.Empty, string.Empty);
+        var slash = account.IndexOf('/');
+        if (slash <= 0 || slash == account.Length - 1) return (account.Trim(), string.Empty);
+        return (account[..slash].Trim(), account[(slash + 1)..].Trim());
     }
 
     private string FormatDecimal(decimal value)

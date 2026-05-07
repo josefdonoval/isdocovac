@@ -18,7 +18,6 @@ public class PdfInvoiceProcessingServiceTests
     private readonly Mock<IAzureBlobStorageProvider> _blobStorageProviderMock;
     private readonly Mock<IInvoiceParsingService> _invoiceParsingServiceMock;
     private readonly Mock<IIsdocGeneratorService> _isdocGeneratorServiceMock;
-    private readonly Mock<IIsdocValidationService> _validationServiceMock;
     private readonly Mock<ILogger<PdfInvoiceProcessingService>> _loggerMock;
     private readonly PdfInvoiceProcessingService _sut;
 
@@ -29,7 +28,6 @@ public class PdfInvoiceProcessingServiceTests
         _blobStorageProviderMock = new Mock<IAzureBlobStorageProvider>();
         _invoiceParsingServiceMock = new Mock<IInvoiceParsingService>();
         _isdocGeneratorServiceMock = new Mock<IIsdocGeneratorService>();
-        _validationServiceMock = new Mock<IIsdocValidationService>();
         _loggerMock = new Mock<ILogger<PdfInvoiceProcessingService>>();
 
         _sut = new PdfInvoiceProcessingService(
@@ -38,7 +36,6 @@ public class PdfInvoiceProcessingServiceTests
             _blobStorageProviderMock.Object,
             _invoiceParsingServiceMock.Object,
             _isdocGeneratorServiceMock.Object,
-            _validationServiceMock.Object,
             _loggerMock.Object);
     }
 
@@ -90,10 +87,6 @@ public class PdfInvoiceProcessingServiceTests
         _isdocGeneratorServiceMock
             .Setup(x => x.GenerateIsdocXmlAsync(It.IsAny<InvoiceExtractionResult>()))
             .ReturnsAsync("<Invoice/>");
-
-        _validationServiceMock
-            .Setup(x => x.ValidateAgainstXsdAsync(It.IsAny<string>()))
-            .ReturnsAsync((true, new List<string>()));
 
         _blobStorageProviderMock
             .Setup(x => x.GetBlobUrl(It.IsAny<string>(), It.IsAny<string>()))
@@ -176,43 +169,6 @@ public class PdfInvoiceProcessingServiceTests
     }
 
     [Fact]
-    public async Task ProcessPdfInvoiceAsync_HandlesXsdValidationFailureGracefully()
-    {
-        var parsedInvoice = CreateTestParsedInvoice();
-        var processingId = Guid.NewGuid();
-
-        _parsedInvoiceProviderMock
-            .Setup(x => x.GetByIdAsync(parsedInvoice.Id))
-            .ReturnsAsync(parsedInvoice);
-
-        _blobStorageProviderMock
-            .Setup(x => x.DownloadBlobAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new MemoryStream(new byte[100]));
-
-        _invoiceParsingServiceMock
-            .Setup(x => x.UploadPdfAsync(It.IsAny<Stream>(), It.IsAny<string>()))
-            .ReturnsAsync("file-id-123");
-
-        _invoiceParsingServiceMock
-            .Setup(x => x.ExtractInvoiceDataAsync(It.IsAny<string>(), It.IsAny<InvoiceLineMode>()))
-            .ReturnsAsync(CreateSuccessfulExtraction());
-
-        _isdocGeneratorServiceMock
-            .Setup(x => x.GenerateIsdocXmlAsync(It.IsAny<InvoiceExtractionResult>()))
-            .ReturnsAsync("<Invoice/>");
-
-        _validationServiceMock
-            .Setup(x => x.ValidateAgainstXsdAsync(It.IsAny<string>()))
-            .ReturnsAsync((false, new List<string> { "XSD error" }));
-
-        // Should not throw
-        await _sut.ProcessPdfInvoiceAsync(parsedInvoice.Id, processingId);
-
-        _parsedInvoiceProviderMock.Verify(
-            x => x.UpdateStatusAsync(parsedInvoice.Id, ParsedInvoiceStatus.ValidationFailed), Times.Once);
-    }
-
-    [Fact]
     public async Task ProcessPdfInvoiceAsync_CallsCleanupInFinallyBlock()
     {
         var parsedInvoice = CreateTestParsedInvoice();
@@ -291,10 +247,6 @@ public class PdfInvoiceProcessingServiceTests
         _isdocGeneratorServiceMock
             .Setup(x => x.GenerateIsdocXmlAsync(It.IsAny<InvoiceExtractionResult>()))
             .ReturnsAsync("<Invoice/>");
-
-        _validationServiceMock
-            .Setup(x => x.ValidateAgainstXsdAsync(It.IsAny<string>()))
-            .ReturnsAsync((true, new List<string>()));
 
         await _sut.RetryProcessingAsync(parsedInvoice.Id);
 

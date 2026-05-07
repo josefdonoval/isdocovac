@@ -93,7 +93,7 @@ public class ParsedInvoiceProcessingProvider : IParsedInvoiceProcessingProvider
             processing.Status = status;
             if (errorMessage != null)
             {
-                processing.ErrorMessage = errorMessage;
+                processing.ErrorMessage = Truncate(errorMessage, 2000);
             }
 
             if (status == ProcessingStatus.Completed || status == ProcessingStatus.Failed)
@@ -124,11 +124,14 @@ public class ParsedInvoiceProcessingProvider : IParsedInvoiceProcessingProvider
         if (processing != null)
         {
             processing.Status = ProcessingStatus.Failed;
-            processing.ErrorMessage = errorMessage;
+            processing.ErrorMessage = Truncate(errorMessage, 2000);
             processing.CompletedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
     }
+
+    private static string Truncate(string value, int max)
+        => string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..(max - 3)] + "...";
 
     // PDF processing step tracking implementations
     public async Task UpdateCurrentStepAsync(Guid processingId, string step)

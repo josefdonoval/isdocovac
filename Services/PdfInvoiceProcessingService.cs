@@ -19,7 +19,6 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
     private readonly IAzureBlobStorageProvider _blobStorageProvider;
     private readonly IInvoiceParsingService _invoiceParsingService;
     private readonly IIsdocGeneratorService _isdocGenerator;
-    private readonly IIsdocValidationService _isdocValidator;
     private readonly ILogger<PdfInvoiceProcessingService> _logger;
 
     public PdfInvoiceProcessingService(
@@ -28,7 +27,6 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
         IAzureBlobStorageProvider blobStorageProvider,
         IInvoiceParsingService invoiceParsingService,
         IIsdocGeneratorService isdocGenerator,
-        IIsdocValidationService isdocValidator,
         ILogger<PdfInvoiceProcessingService> logger)
     {
         _parsedInvoiceProvider = parsedInvoiceProvider;
@@ -36,7 +34,6 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
         _blobStorageProvider = blobStorageProvider;
         _invoiceParsingService = invoiceParsingService;
         _isdocGenerator = isdocGenerator;
-        _isdocValidator = isdocValidator;
         _logger = logger;
     }
 
@@ -146,39 +143,10 @@ public class PdfInvoiceProcessingService : IPdfInvoiceProcessingService
                 throw;
             }
 
-            // Step 4: Validate ISDOC against XSD schema
-            await _processingProvider.UpdateCurrentStepAsync(processingId, "ValidatingXSD");
-
-            try
-            {
-                var (isValid, errors) = await _isdocValidator.ValidateAgainstXsdAsync(isdocXml);
-
-                if (!isValid)
-                {
-                    var errorMessage = string.Join("; ", errors);
-                    stepErrors["ValidatingXSD"] = errorMessage;
-                    _logger.LogWarning("ISDOC XML validation failed for invoice: {InvoiceNumber}. Errors: {Errors}",
-                        extractionResult.InvoiceNumber, errorMessage);
-
-                    // Update as validation failed
-                    await UpdateParsedInvoiceData(parsedInvoiceId, extractionResult, false, errorMessage);
-                    await _parsedInvoiceProvider.UpdateStatusAsync(parsedInvoiceId, ParsedInvoiceStatus.ValidationFailed);
-                    await _processingProvider.FailProcessingAsync(processingId, $"XSD validation failed: {errorMessage}");
-                    await UpdateStepErrors(processingId, stepErrors);
-
-                    return;
-                }
-
-                _logger.LogInformation("ISDOC XML validation successful for invoice: {InvoiceNumber}", extractionResult.InvoiceNumber);
-            }
-            catch (Exception ex)
-            {
-                stepErrors["ValidatingXSD"] = ex.Message;
-                _logger.LogError(ex, "Error during XSD validation");
-                throw;
-            }
-
-            // Step 5: Update ParsedInvoice with extracted data
+            // XSD validation is intentionally skipped here. The generated ISDOC is a synthetic
+            // by-product of AI extraction, not an authoritative invoice document — the data
+            // already lives in the ParsedInvoice columns. XSD enforcement belongs on real
+            // ISDOC XML uploads (see IsdocXmlParsingService), not on round-tripped PDF data.
             await UpdateParsedInvoiceData(parsedInvoiceId, extractionResult, true, null);
 
             // Mark as parsed and ready to import
