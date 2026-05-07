@@ -76,7 +76,7 @@ public class VatCalculationService : IVatCalculationService
         {
             if (!inv.TaxableSupplyDate.HasValue)
             {
-                errors.Add($"Faktura {inv.Number}: chybí DUZP (TaxableSupplyDate).");
+                errors.Add($"Faktura {inv.InternalNumber}: chybí DUZP (TaxableSupplyDate).");
                 continue;
             }
 
@@ -95,7 +95,7 @@ public class VatCalculationService : IVatCalculationService
             }
             catch (Exception ex)
             {
-                errors.Add($"Faktura {inv.Number}: {ex.Message}");
+                errors.Add($"Faktura {inv.InternalNumber}: {ex.Message}");
             }
         }
 
@@ -139,7 +139,7 @@ public class VatCalculationService : IVatCalculationService
         if (totalCzk > SmallInvoiceThresholdCzk)
         {
             report.A4Rows.Add(new KhA4Row(
-                inv.Number,
+                inv.InternalNumber,
                 inv.TaxableSupplyDate!.Value,
                 VatNumber.StripCountryPrefix(inv.ClientVatNo),
                 base21, vat21, base12, vat12));
@@ -182,7 +182,7 @@ public class VatCalculationService : IVatCalculationService
             if (totalCzk > SmallInvoiceThresholdCzk)
             {
                 report.B2Rows.Add(new KhB2Row(
-                    inv.Number,
+                    inv.InternalNumber,
                     inv.TaxableSupplyDate!.Value,
                     VatNumber.StripCountryPrefix(inv.SupplierVatNo),
                     base21, vat21, base12, vat12));
@@ -228,7 +228,7 @@ public class VatCalculationService : IVatCalculationService
         }
 
         report.A2Rows.Add(new KhA2Row(
-            string.IsNullOrWhiteSpace(inv.Number) ? inv.Id.ToString("N")[..8] : inv.Number,
+            string.IsNullOrWhiteSpace(inv.InternalNumber) ? inv.Id.ToString("N")[..8] : inv.InternalNumber,
             inv.TaxableSupplyDate!.Value,
             string.IsNullOrWhiteSpace(country) ? "ZZ" : country.ToUpperInvariant(),
             VatNumber.StripCountryPrefix(inv.SupplierVatNo),

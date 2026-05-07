@@ -45,7 +45,7 @@ public class InvoiceManagementServiceTests
             Id = Guid.NewGuid(),
             CompanyId = userId ?? Guid.NewGuid(),
             Direction = InvoiceDirection.Inbound,
-            Number = "202603010001"
+            InternalNumber = "202603010001"
         };
     }
 
@@ -80,31 +80,31 @@ public class InvoiceManagementServiceTests
     }
 
     [Fact]
-    public async Task GenerateInvoiceNumberAsync_FormatsCorrectly()
+    public async Task GenerateInternalNumberAsync_FormatsCorrectly()
     {
         var userId = Guid.NewGuid();
         var vatDate = new DateTime(2026, 3, 1);
 
         _mainInvoiceProviderMock
-            .Setup(x => x.GetCountForVatMonthAsync(userId, 2026, 3))
-            .ReturnsAsync(0);
+            .Setup(x => x.GetNextInternalNumberSuffixAsync(userId, 2026, 3))
+            .ReturnsAsync(1);
 
-        var result = await _sut.GenerateInvoiceNumberAsync(userId, vatDate);
+        var result = await _sut.GenerateInternalNumberAsync(userId, vatDate);
 
         result.Should().Be("2026030001");
     }
 
     [Fact]
-    public async Task GenerateInvoiceNumberAsync_IncrementsCounter()
+    public async Task GenerateInternalNumberAsync_IncrementsCounter()
     {
         var userId = Guid.NewGuid();
         var vatDate = new DateTime(2026, 3, 1);
 
         _mainInvoiceProviderMock
-            .Setup(x => x.GetCountForVatMonthAsync(userId, 2026, 3))
-            .ReturnsAsync(5);
+            .Setup(x => x.GetNextInternalNumberSuffixAsync(userId, 2026, 3))
+            .ReturnsAsync(6);
 
-        var result = await _sut.GenerateInvoiceNumberAsync(userId, vatDate);
+        var result = await _sut.GenerateInternalNumberAsync(userId, vatDate);
 
         result.Should().Be("2026030006");
     }

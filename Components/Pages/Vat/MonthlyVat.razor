@@ -57,7 +57,7 @@
                 {
                     <li>
                         @(inv.Direction == InvoiceDirection.Outbound ? "Vydaná" : "Přijatá")
-                        <a href="/invoices/@inv.Id">@inv.Number</a> — @(inv.IssuedOn?.ToString("yyyy-MM-dd") ?? "?")
+                        <a href="/invoices/@inv.Id">@inv.InternalNumber</a> — @(inv.IssuedOn?.ToString("yyyy-MM-dd") ?? "?")
                         @if (inv.Direction == InvoiceDirection.Inbound && !string.IsNullOrWhiteSpace(inv.SupplierVatNo))
                         {
                             <span> (dodavatel plátce DPH: @inv.SupplierVatNo)</span>

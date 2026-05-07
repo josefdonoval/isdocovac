@@ -12,6 +12,7 @@ public interface IMainInvoiceProvider
     Task<IEnumerable<Invoice>> GetByCompanyIdAsync(Guid companyId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
     Task<int> GetCountAsync(Guid companyId, InvoiceDirection? direction = null);
     Task<int> GetCountForVatMonthAsync(Guid companyId, int year, int month);
+    Task<int> GetNextInternalNumberSuffixAsync(Guid companyId, int year, int month);
     Task<IReadOnlyList<Invoice>> GetVatMonthInvoicesAsync(Guid companyId, int year, int month);
     Task<IReadOnlyList<Invoice>> GetVatQuarterInvoicesAsync(Guid companyId, int year, int quarter);
     Task<IReadOnlyList<Invoice>> GetInvoicesMissingRequiredDuzpAsync(Guid companyId, int year);
@@ -90,6 +91,31 @@ public class MainInvoiceProvider : IMainInvoiceProvider
             .CountAsync();
     }
 
+    public async Task<int> GetNextInternalNumberSuffixAsync(Guid companyId, int year, int month)
+    {
+        var prefix = $"{year:0000}{month:00}";
+
+        // Ignore soft-delete filter so deleted rows still consume their suffix and we never reuse one.
+        var existingNumbers = await _context.Invoices
+            .IgnoreQueryFilters()
+            .Where(i => i.CompanyId == companyId && i.InternalNumber.StartsWith(prefix))
+            .Select(i => i.InternalNumber)
+            .ToListAsync();
+
+        var maxSuffix = 0;
+        foreach (var number in existingNumbers)
+        {
+            if (number.Length > prefix.Length
+                && int.TryParse(number.AsSpan(prefix.Length), out var suffix)
+                && suffix > maxSuffix)
+            {
+                maxSuffix = suffix;
+            }
+        }
+
+        return maxSuffix + 1;
+    }
+
     public async Task<IReadOnlyList<Invoice>> GetVatMonthInvoicesAsync(Guid companyId, int year, int month)
     {
         var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -102,7 +128,7 @@ public class MainInvoiceProvider : IMainInvoiceProvider
                 && i.TaxableSupplyDate >= startDate
                 && i.TaxableSupplyDate < endDate)
             .OrderBy(i => i.TaxableSupplyDate)
-            .ThenBy(i => i.Number)
+            .ThenBy(i => i.InternalNumber)
             .ToListAsync();
     }
 
@@ -120,7 +146,7 @@ public class MainInvoiceProvider : IMainInvoiceProvider
                 && i.TaxableSupplyDate >= startDate
                 && i.TaxableSupplyDate < endDate)
             .OrderBy(i => i.TaxableSupplyDate)
-            .ThenBy(i => i.Number)
+            .ThenBy(i => i.InternalNumber)
             .ToListAsync();
     }
 
@@ -139,7 +165,7 @@ public class MainInvoiceProvider : IMainInvoiceProvider
                 && (i.Direction == InvoiceDirection.Outbound
                     || (i.Direction == InvoiceDirection.Inbound && i.SupplierVatNo != null && i.SupplierVatNo != "")))
             .OrderBy(i => i.IssuedOn)
-            .ThenBy(i => i.Number)
+            .ThenBy(i => i.InternalNumber)
             .ToListAsync();
 
         return candidates;

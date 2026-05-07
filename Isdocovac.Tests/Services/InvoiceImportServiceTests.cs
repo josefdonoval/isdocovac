@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
@@ -13,7 +14,10 @@ public class InvoiceImportServiceTests
     private readonly Mock<IMainInvoiceProvider> _mainInvoiceProviderMock;
     private readonly Mock<IFakturoidInvoiceProvider> _fakturoidInvoiceProviderMock;
     private readonly Mock<IParsedInvoiceProvider> _parsedInvoiceProviderMock;
+    private readonly Mock<IContactProvider> _contactProviderMock;
+    private readonly Mock<IInvoiceManagementService> _invoiceManagementMock;
     private readonly Mock<IConfiguration> _configurationMock;
+    private readonly Mock<ILogger<InvoiceImportService>> _loggerMock;
     private readonly InvoiceImportService _sut;
 
     public InvoiceImportServiceTests()
@@ -21,13 +25,23 @@ public class InvoiceImportServiceTests
         _mainInvoiceProviderMock = new Mock<IMainInvoiceProvider>();
         _fakturoidInvoiceProviderMock = new Mock<IFakturoidInvoiceProvider>();
         _parsedInvoiceProviderMock = new Mock<IParsedInvoiceProvider>();
+        _contactProviderMock = new Mock<IContactProvider>();
+        _invoiceManagementMock = new Mock<IInvoiceManagementService>();
         _configurationMock = new Mock<IConfiguration>();
+        _loggerMock = new Mock<ILogger<InvoiceImportService>>();
+
+        _invoiceManagementMock
+            .Setup(s => s.GenerateInternalNumberAsync(It.IsAny<Guid>(), It.IsAny<DateTime>()))
+            .ReturnsAsync((Guid _, DateTime d) => $"{d.Year:0000}{d.Month:00}0001");
 
         _sut = new InvoiceImportService(
             _mainInvoiceProviderMock.Object,
             _fakturoidInvoiceProviderMock.Object,
             _parsedInvoiceProviderMock.Object,
-            _configurationMock.Object);
+            _contactProviderMock.Object,
+            _invoiceManagementMock.Object,
+            _configurationMock.Object,
+            _loggerMock.Object);
     }
 
     private static FakturoidInvoice CreateTestFakturoidInvoice(bool isImported = false)
@@ -301,5 +315,181 @@ public class InvoiceImportServiceTests
         await _sut.ResyncFromFakturoidAsync(invoiceId);
 
         _mainInvoiceProviderMock.Verify(x => x.UpdateAsync(It.IsAny<Invoice>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportFromParsedInvoiceAsync_NewForeignSupplier_CreatesContact()
+    {
+        var parsedInvoice = CreateTestParsedInvoice();
+        parsedInvoice.SupplierName = "Hetzner Online GmbH";
+        parsedInvoice.SupplierVatNo = "DE812871812";
+        parsedInvoice.SupplierRegistrationNo = null;
+        parsedInvoice.SupplierCountry = "DE";
+        parsedInvoice.CustomerVatNo = "CZ12345678";
+        var companyId = Guid.NewGuid();
+        Contact? capturedContact = null;
+
+        _configurationMock.Setup(c => c["Company:VatNo"]).Returns("CZ12345678");
+        _parsedInvoiceProviderMock.Setup(x => x.GetByIdAsync(parsedInvoice.Id)).ReturnsAsync(parsedInvoice);
+        _contactProviderMock
+            .Setup(x => x.FindByIdentifiersAsync(companyId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync((Contact?)null);
+        _contactProviderMock
+            .Setup(x => x.AddAsync(It.IsAny<Contact>()))
+            .Callback<Contact>(c => capturedContact = c)
+            .ReturnsAsync((Contact c) => c);
+        _mainInvoiceProviderMock
+            .Setup(x => x.CreateAsync(It.IsAny<Invoice>()))
+            .ReturnsAsync((Invoice i) => i);
+
+        await _sut.ImportFromParsedInvoiceAsync(parsedInvoice.Id, companyId);
+
+        _contactProviderMock.Verify(x => x.AddAsync(It.IsAny<Contact>()), Times.Once);
+        _contactProviderMock.Verify(x => x.UpdateAsync(It.IsAny<Contact>()), Times.Never);
+        _mainInvoiceProviderMock.Verify(x => x.CreateAsync(It.IsAny<Invoice>()), Times.Once);
+
+        capturedContact.Should().NotBeNull();
+        capturedContact!.Kind.Should().Be(ContactKind.Supplier);
+        capturedContact.CompanyName.Should().Be("Hetzner Online GmbH");
+        capturedContact.Dic.Should().Be("DE812871812");
+        capturedContact.Ico.Should().BeNull();
+        capturedContact.IsLegalEntity.Should().BeTrue();
+        capturedContact.IsActive.Should().BeTrue();
+        capturedContact.VatPeriod.Should().Be(VatPeriod.Monthly);
+        capturedContact.CompanyId.Should().Be(companyId);
+        capturedContact.CountryCode.Should().Be("DE");
+    }
+
+    [Fact]
+    public async Task ImportFromParsedInvoiceAsync_ExistingSupplier_NoContactWrites()
+    {
+        var parsedInvoice = CreateTestParsedInvoice();
+        parsedInvoice.SupplierName = "ACME s.r.o.";
+        parsedInvoice.SupplierRegistrationNo = "12345678";
+        parsedInvoice.CustomerVatNo = "CZ99999999";
+        var companyId = Guid.NewGuid();
+        var existing = new Contact
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = companyId,
+            Kind = ContactKind.Supplier,
+            CompanyName = "ACME s.r.o.",
+            Ico = "12345678"
+        };
+
+        _configurationMock.Setup(c => c["Company:VatNo"]).Returns("CZ99999999");
+        _parsedInvoiceProviderMock.Setup(x => x.GetByIdAsync(parsedInvoice.Id)).ReturnsAsync(parsedInvoice);
+        _contactProviderMock
+            .Setup(x => x.FindByIdentifiersAsync(companyId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync(existing);
+        _mainInvoiceProviderMock
+            .Setup(x => x.CreateAsync(It.IsAny<Invoice>()))
+            .ReturnsAsync((Invoice i) => i);
+
+        await _sut.ImportFromParsedInvoiceAsync(parsedInvoice.Id, companyId);
+
+        _contactProviderMock.Verify(x => x.AddAsync(It.IsAny<Contact>()), Times.Never);
+        _contactProviderMock.Verify(x => x.UpdateAsync(It.IsAny<Contact>()), Times.Never);
+        _mainInvoiceProviderMock.Verify(x => x.CreateAsync(It.IsAny<Invoice>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportFromParsedInvoiceAsync_ExistingClientNowSupplier_UpgradesToBoth()
+    {
+        var parsedInvoice = CreateTestParsedInvoice();
+        parsedInvoice.SupplierName = "ACME s.r.o.";
+        parsedInvoice.SupplierRegistrationNo = "12345678";
+        parsedInvoice.CustomerVatNo = "CZ99999999";
+        var companyId = Guid.NewGuid();
+        var existing = new Contact
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = companyId,
+            Kind = ContactKind.Client,
+            CompanyName = "ACME s.r.o.",
+            Ico = "12345678"
+        };
+        Contact? capturedUpdate = null;
+
+        _configurationMock.Setup(c => c["Company:VatNo"]).Returns("CZ99999999");
+        _parsedInvoiceProviderMock.Setup(x => x.GetByIdAsync(parsedInvoice.Id)).ReturnsAsync(parsedInvoice);
+        _contactProviderMock
+            .Setup(x => x.FindByIdentifiersAsync(companyId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync(existing);
+        _contactProviderMock
+            .Setup(x => x.UpdateAsync(It.IsAny<Contact>()))
+            .Callback<Contact>(c => capturedUpdate = c)
+            .ReturnsAsync((Contact c) => c);
+        _mainInvoiceProviderMock
+            .Setup(x => x.CreateAsync(It.IsAny<Invoice>()))
+            .ReturnsAsync((Invoice i) => i);
+
+        await _sut.ImportFromParsedInvoiceAsync(parsedInvoice.Id, companyId);
+
+        _contactProviderMock.Verify(x => x.AddAsync(It.IsAny<Contact>()), Times.Never);
+        _contactProviderMock.Verify(x => x.UpdateAsync(It.IsAny<Contact>()), Times.Once);
+        capturedUpdate.Should().NotBeNull();
+        capturedUpdate!.Kind.Should().Be(ContactKind.Both);
+    }
+
+    [Fact]
+    public async Task ImportFromParsedInvoiceAsync_NoIdentifyingData_SkipsContactUpsert()
+    {
+        var parsedInvoice = CreateTestParsedInvoice();
+        parsedInvoice.SupplierName = null;
+        parsedInvoice.SupplierVatNo = null;
+        parsedInvoice.SupplierRegistrationNo = null;
+        parsedInvoice.CustomerVatNo = null;
+        var companyId = Guid.NewGuid();
+
+        _configurationMock.Setup(c => c["Company:VatNo"]).Returns((string?)null);
+        _parsedInvoiceProviderMock.Setup(x => x.GetByIdAsync(parsedInvoice.Id)).ReturnsAsync(parsedInvoice);
+        _mainInvoiceProviderMock
+            .Setup(x => x.CreateAsync(It.IsAny<Invoice>()))
+            .ReturnsAsync((Invoice i) => i);
+
+        await _sut.ImportFromParsedInvoiceAsync(parsedInvoice.Id, companyId);
+
+        _contactProviderMock.Verify(
+            x => x.FindByIdentifiersAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()),
+            Times.Never);
+        _contactProviderMock.Verify(x => x.AddAsync(It.IsAny<Contact>()), Times.Never);
+        _contactProviderMock.Verify(x => x.UpdateAsync(It.IsAny<Contact>()), Times.Never);
+        _mainInvoiceProviderMock.Verify(x => x.CreateAsync(It.IsAny<Invoice>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportFromParsedInvoiceAsync_Outbound_CreatesClientFromCustomerFields()
+    {
+        var parsedInvoice = CreateTestParsedInvoice();
+        parsedInvoice.SupplierVatNo = "CZ99999999";
+        parsedInvoice.CustomerName = "Big Buyer s.r.o.";
+        parsedInvoice.CustomerRegistrationNo = "87654321";
+        parsedInvoice.CustomerVatNo = "CZ87654321";
+        parsedInvoice.CustomerCountry = "CZ";
+        var companyId = Guid.NewGuid();
+        Contact? capturedContact = null;
+
+        _configurationMock.Setup(c => c["Company:VatNo"]).Returns("CZ99999999");
+        _parsedInvoiceProviderMock.Setup(x => x.GetByIdAsync(parsedInvoice.Id)).ReturnsAsync(parsedInvoice);
+        _contactProviderMock
+            .Setup(x => x.FindByIdentifiersAsync(companyId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync((Contact?)null);
+        _contactProviderMock
+            .Setup(x => x.AddAsync(It.IsAny<Contact>()))
+            .Callback<Contact>(c => capturedContact = c)
+            .ReturnsAsync((Contact c) => c);
+        _mainInvoiceProviderMock
+            .Setup(x => x.CreateAsync(It.IsAny<Invoice>()))
+            .ReturnsAsync((Invoice i) => i);
+
+        await _sut.ImportFromParsedInvoiceAsync(parsedInvoice.Id, companyId);
+
+        _contactProviderMock.Verify(x => x.AddAsync(It.IsAny<Contact>()), Times.Once);
+        capturedContact.Should().NotBeNull();
+        capturedContact!.Kind.Should().Be(ContactKind.Client);
+        capturedContact.CompanyName.Should().Be("Big Buyer s.r.o.");
+        capturedContact.Ico.Should().Be("87654321");
+        capturedContact.Dic.Should().Be("CZ87654321");
     }
 }

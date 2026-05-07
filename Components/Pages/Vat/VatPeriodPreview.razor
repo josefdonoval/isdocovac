@@ -67,7 +67,7 @@
                 {
                     <li>
                         @(inv.Direction == InvoiceDirection.Outbound ? "Vydaná" : "Přijatá")
-                        <a href="/invoices/@inv.Id">@inv.Number</a> — @(inv.IssuedOn?.ToString("yyyy-MM-dd") ?? "?")
+                        <a href="/invoices/@inv.Id">@inv.InternalNumber</a> — @(inv.IssuedOn?.ToString("yyyy-MM-dd") ?? "?")
                     </li>
                 }
             </ul>
@@ -124,7 +124,7 @@
                         @foreach (var row in group.Value)
                         {
                             <tr>
-                                <td><a href="/invoices/@row.Invoice.Id">@row.Invoice.Number</a></td>
+                                <td><a href="/invoices/@row.Invoice.Id">@row.Invoice.InternalNumber</a></td>
                                 <td>@(row.Invoice.TaxableSupplyDate?.ToString("yyyy-MM-dd") ?? "—")</td>
                                 <td>@row.Counterparty</td>
                                 <td>@(string.IsNullOrWhiteSpace(row.Country) ? "—" : row.Country)</td>
@@ -221,7 +221,7 @@
                     RatesSummary: SummarizeRates(i.VatRatesSummary)))
                 .GroupBy(r => r.Category)
                 .OrderBy(g => (int)g.Key)
-                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.Invoice.TaxableSupplyDate).ThenBy(r => r.Invoice.Number).ToList());
+                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.Invoice.TaxableSupplyDate).ThenBy(r => r.Invoice.InternalNumber).ToList());
         }
         finally
         {

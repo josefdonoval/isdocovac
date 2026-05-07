@@ -2,6 +2,7 @@ using Isdocovac.Models;
 using Isdocovac.Models.Enums;
 using Isdocovac.Providers;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.EntityFrameworkCore;
 
 namespace Isdocovac.Services;
 
@@ -10,7 +11,7 @@ public interface IInvoiceManagementService
     Task<IEnumerable<Invoice>> GetCompanyInvoicesAsync(Guid companyId, InvoiceDirection? direction = null, int page = 1, int pageSize = 50);
     Task<int> GetCompanyInvoiceCountAsync(Guid companyId, InvoiceDirection? direction = null);
     Task<Invoice?> GetInvoiceDetailsAsync(Guid invoiceId);
-    Task<string> GenerateInvoiceNumberAsync(Guid companyId, DateTime vatDate);
+    Task<string> GenerateInternalNumberAsync(Guid companyId, DateTime vatDate);
     Task<Invoice> CreateManualInvoiceAsync(Invoice invoice);
     Task<Invoice> CreateManualInvoiceWithAttachmentAsync(Invoice invoice, IBrowserFile? pdfFile = null);
     Task UpdateInvoiceAsync(Invoice invoice);
@@ -55,17 +56,50 @@ public class InvoiceManagementService : IInvoiceManagementService
         return await _invoiceProvider.GetWithDetailsAsync(invoiceId);
     }
 
-    public async Task<string> GenerateInvoiceNumberAsync(Guid companyId, DateTime vatDate)
+    public async Task<string> GenerateInternalNumberAsync(Guid companyId, DateTime vatDate)
     {
-        var count = await _invoiceProvider.GetCountForVatMonthAsync(companyId, vatDate.Year, vatDate.Month);
-        var counter = count + 1;
-        return $"{vatDate.Year:0000}{vatDate.Month:00}{counter:0000}";
+        var suffix = await _invoiceProvider.GetNextInternalNumberSuffixAsync(companyId, vatDate.Year, vatDate.Month);
+        return $"{vatDate.Year:0000}{vatDate.Month:00}{suffix:0000}";
     }
 
     public async Task<Invoice> CreateManualInvoiceAsync(Invoice invoice)
     {
         invoice.Source = InvoiceSource.Manual;
-        return await _invoiceProvider.CreateAsync(invoice);
+        return await CreateWithInternalNumberRetryAsync(invoice);
+    }
+
+    /// <summary>
+    /// Inserts an invoice and, on a unique-constraint clash on InternalNumber, regenerates the
+    /// suffix and retries. Protects against a race when two requests pick the same next suffix.
+    /// </summary>
+    internal async Task<Invoice> CreateWithInternalNumberRetryAsync(Invoice invoice)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                return await _invoiceProvider.CreateAsync(invoice);
+            }
+            catch (DbUpdateException ex) when (IsInternalNumberUniqueViolation(ex) && attempt < maxAttempts)
+            {
+                _logger.LogWarning(ex, "InternalNumber collision for {InternalNumber}, regenerating (attempt {Attempt}/{MaxAttempts})",
+                    invoice.InternalNumber, attempt, maxAttempts);
+
+                var vatDate = invoice.TaxableSupplyDate ?? invoice.IssuedOn ?? DateTime.UtcNow;
+                invoice.InternalNumber = await GenerateInternalNumberAsync(invoice.CompanyId, vatDate);
+                invoice.Id = Guid.Empty; // force new id on next attempt
+            }
+        }
+
+        throw new InvalidOperationException("Failed to assign a unique InternalNumber after multiple attempts.");
+    }
+
+    private static bool IsInternalNumberUniqueViolation(DbUpdateException ex)
+    {
+        // Postgres unique violation SQLSTATE is 23505. Match by message contains internal_number to avoid
+        // mistaking unrelated unique constraint failures.
+        return ex.InnerException?.Message.Contains("internal_number", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     public async Task UpdateInvoiceAsync(Invoice invoice)

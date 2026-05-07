@@ -6,6 +6,7 @@
 @using Isdocovac.Services
 @using Microsoft.AspNetCore.Components.Forms
 @inject IInvoiceManagementService InvoiceManagementService
+@inject IInvoiceImportService InvoiceImportService
 @inject IContactProvider ContactProvider
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -119,9 +120,9 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="number" class="form-label">Číslo @NumberLabel <span class="text-danger">*</span></label>
-                            <InputText id="number" class="form-control" @bind-Value="formModel.Number" @bind-Value:after="OnInvoiceNumberChanged" />
-                            <ValidationMessage For="@(() => formModel.Number)" />
+                            <label for="number" class="form-label">Interní číslo @NumberLabel <span class="text-danger">*</span></label>
+                            <InputText id="number" class="form-control" @bind-Value="formModel.InternalNumber" @bind-Value:after="OnInvoiceNumberChanged" />
+                            <ValidationMessage For="@(() => formModel.InternalNumber)" />
                         </div>
 
                         <div class="col-md-6 mb-3">
@@ -243,7 +244,17 @@
                 @if (showAdvancedFields)
                 {
                     <div class="card-body">
-                        <h6 class="border-bottom pb-2 mb-3">Platba</h6>
+                        <h6 class="border-bottom pb-2 mb-3">Identifikace</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="originalDocumentNumber" class="form-label">Číslo původního dokladu</label>
+                                <InputText id="originalDocumentNumber" class="form-control" @bind-Value="formModel.OriginalDocumentNumber" />
+                                <div class="form-text">Identifikátor z originálního dokladu (např. číslo faktury dodavatele). Není unikátní.</div>
+                                <ValidationMessage For="@(() => formModel.OriginalDocumentNumber)" />
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Platba</h6>
                         <div class="row">
                             <div class="col-md-4 mb-3">
                                 <label for="variableSymbol" class="form-label">Variabilní symbol</label>
@@ -309,7 +320,13 @@
 </div>
 
 @code {
+    public enum InvoiceEditorMode { CreateManual, ImportFromParsed }
+
     [Parameter, EditorRequired] public InvoiceDirection Direction { get; set; }
+    [Parameter] public InvoiceEditorMode Mode { get; set; } = InvoiceEditorMode.CreateManual;
+    [Parameter] public InvoiceFormModel? InitialModel { get; set; }
+    [Parameter] public Guid? InitialContactId { get; set; }
+    [Parameter] public Guid? ParsedInvoiceId { get; set; }
 
     private InvoiceFormModel formModel = new();
     private Company? _ownCompany;
@@ -328,19 +345,25 @@
     private bool IsOutbound => Direction == InvoiceDirection.Outbound;
     private ContactKind CounterpartyKind => IsOutbound ? ContactKind.Client : ContactKind.Supplier;
 
-    private string Title => IsOutbound ? "Vystavit fakturu" : "Vytvořit náklad";
-    private string Subtitle => IsOutbound
-        ? "Nová odchozí faktura pro odběratele."
-        : "Nový náklad přijatý od dodavatele.";
+    private bool IsImportMode => Mode == InvoiceEditorMode.ImportFromParsed;
+
+    private string Title => IsImportMode
+        ? (IsOutbound ? "Zkontrolovat a vystavit fakturu" : "Zkontrolovat a importovat náklad")
+        : (IsOutbound ? "Vystavit fakturu" : "Vytvořit náklad");
+    private string Subtitle => IsImportMode
+        ? "Zkontrolujte rozparsovaná data a v případě potřeby je upravte před importem."
+        : (IsOutbound
+            ? "Nová odchozí faktura pro odběratele."
+            : "Nový náklad přijatý od dodavatele.");
     private string CounterpartyCardTitle => IsOutbound ? "Odběratel" : "Dodavatel";
     private string OwnSideCardTitle => IsOutbound ? "Dodavatel (Vy)" : "Odběratel (Vy)";
     private string NumberLabel => IsOutbound ? "faktury" : "dokladu";
-    private string SubmitLabel => IsOutbound ? "Vystavit fakturu" : "Vytvořit náklad";
+    private string SubmitLabel => IsImportMode
+        ? "Importovat"
+        : (IsOutbound ? "Vystavit fakturu" : "Vytvořit náklad");
 
     protected override async Task OnInitializedAsync()
     {
-        formModel.Direction = Direction;
-
         _ownCompany = await CurrentCompanyAccessor.GetActiveCompanyAsync();
         if (_ownCompany == null)
         {
@@ -349,11 +372,36 @@
             return;
         }
         _companyId = _ownCompany.Id;
-        ApplyOwnCompanyToForm();
 
-        AddLineItem();
-        UpdateDueDateFromIssueDate();
-        await GenerateInvoiceNumber();
+        if (InitialModel != null)
+        {
+            formModel = InitialModel;
+            formModel.Direction = Direction;
+            // Mark fields the user already controls so we don't auto-overwrite them.
+            isInvoiceNumberManuallySet = !string.IsNullOrWhiteSpace(formModel.InternalNumber);
+            isVariableSymbolManuallySet = !string.IsNullOrWhiteSpace(formModel.VariableSymbol);
+            isDueDateManuallySet = formModel.DueOn.HasValue;
+
+            ApplyOwnCompanyToForm();
+
+            if (InitialContactId.HasValue)
+            {
+                _selectedContactId = InitialContactId;
+                _selectedContact = await ContactProvider.GetByIdAsync(InitialContactId.Value);
+            }
+        }
+        else
+        {
+            formModel.Direction = Direction;
+            ApplyOwnCompanyToForm();
+            AddLineItem();
+            UpdateDueDateFromIssueDate();
+        }
+
+        if (string.IsNullOrWhiteSpace(formModel.InternalNumber))
+        {
+            await GenerateInvoiceNumber();
+        }
 
         _initialized = true;
     }
@@ -481,7 +529,7 @@
         {
             if (_companyId != Guid.Empty)
             {
-                formModel.Number = await InvoiceManagementService.GenerateInvoiceNumberAsync(_companyId, formModel.TaxableSupplyDate);
+                formModel.InternalNumber = await InvoiceManagementService.GenerateInternalNumberAsync(_companyId, formModel.TaxableSupplyDate);
                 if (!isVariableSymbolManuallySet) UpdateVariableSymbolFromInvoiceNumber();
             }
         }
@@ -491,7 +539,7 @@
         }
     }
 
-    private void UpdateVariableSymbolFromInvoiceNumber() => formModel.VariableSymbol = formModel.Number;
+    private void UpdateVariableSymbolFromInvoiceNumber() => formModel.VariableSymbol = formModel.InternalNumber;
 
     private void AddLineItem() => formModel.Lines.Add(new InvoiceLineFormModel());
 
@@ -539,8 +587,22 @@
             isSubmitting = true;
             formModel.Direction = Direction;
 
-            var invoice = formModel.ToEntity(_companyId);
-            var created = await InvoiceManagementService.CreateManualInvoiceWithAttachmentAsync(invoice, formModel.PdfFile);
+            Invoice created;
+            if (IsImportMode)
+            {
+                if (!ParsedInvoiceId.HasValue)
+                {
+                    errorMessage = "ParsedInvoiceId je vyžadováno při importu.";
+                    return;
+                }
+                created = await InvoiceImportService.ImportFromEditedFormAsync(
+                    ParsedInvoiceId.Value, _companyId, formModel, _selectedContactId!.Value);
+            }
+            else
+            {
+                var invoice = formModel.ToEntity(_companyId);
+                created = await InvoiceManagementService.CreateManualInvoiceWithAttachmentAsync(invoice, formModel.PdfFile);
+            }
             NavigationManager.NavigateTo($"/invoices/{created.Id}");
         }
         catch (Exception ex)
@@ -553,7 +615,7 @@
         }
     }
 
-    private void Cancel() => NavigationManager.NavigateTo("/invoices");
+    private void Cancel() => NavigationManager.NavigateTo(IsImportMode ? "/isdoc/parsed" : "/invoices");
 
     private static string FormatFileSize(long bytes)
     {

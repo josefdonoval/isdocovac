@@ -31,7 +31,10 @@ public class Invoice
 
     [Required]
     [MaxLength(100)]
-    public string Number { get; set; } = string.Empty;
+    public string InternalNumber { get; set; } = string.Empty;
+
+    [MaxLength(100)]
+    public string? OriginalDocumentNumber { get; set; }
 
     [Required]
     [MaxLength(50)]

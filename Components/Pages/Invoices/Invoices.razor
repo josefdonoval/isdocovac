@@ -96,7 +96,7 @@
                             {
                                 <tr>
                                     <td>
-                                        <a href="/invoices/@invoice.Id"><strong>@invoice.Number</strong></a>
+                                        <a href="/invoices/@invoice.Id"><strong>@invoice.InternalNumber</strong></a>
                                         @if (!string.IsNullOrEmpty(invoice.CustomId))
                                         {
                                             <br><small class="text-muted">@invoice.CustomId</small>
@@ -223,7 +223,7 @@
         ConfirmText="Delete"
         OnConfirm="DeleteConfirmed"
         OnCancel="CancelDelete">
-        <p>Are you sure you want to delete invoice <strong>@invoiceToDelete?.Number</strong>?</p>
+        <p>Are you sure you want to delete invoice <strong>@invoiceToDelete?.InternalNumber</strong>?</p>
         <div class="alert alert-warning mb-0">
             The invoice will be marked as deleted and remain available for audit purposes.
         </div>

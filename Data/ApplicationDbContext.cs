@@ -185,6 +185,8 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Invoice>(entity =>
         {
             entity.HasIndex(e => e.CompanyId);
+            entity.HasIndex(e => new { e.CompanyId, e.InternalNumber }).IsUnique();
+            entity.HasIndex(e => new { e.CompanyId, e.OriginalDocumentNumber });
             entity.HasOne(e => e.Company)
                 .WithMany()
                 .HasForeignKey(e => e.CompanyId)

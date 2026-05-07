@@ -2,6 +2,7 @@ using System.Text.Json;
 using Isdocovac.Models;
 using Isdocovac.Models.Enums;
 using Isdocovac.Models.Extraction;
+using Isdocovac.Models.Forms;
 using Isdocovac.Providers;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,7 +13,20 @@ public interface IInvoiceImportService
     Task<Invoice> ImportFromFakturoidAsync(Guid fakturoidInvoiceId, Guid companyId);
     Task<IEnumerable<Invoice>> BulkImportFromFakturoidAsync(IEnumerable<Guid> fakturoidInvoiceIds, Guid companyId);
     Task<Invoice> ImportFromParsedInvoiceAsync(Guid parsedInvoiceId, Guid companyId);
+    Task<Invoice> ImportFromEditedFormAsync(Guid parsedInvoiceId, Guid companyId, InvoiceFormModel editedModel, Guid contactId);
     Task<Invoice> ResyncFromFakturoidAsync(Guid invoiceId);
+
+    /// <summary>
+    /// Resolves whether a parsed invoice was issued by us (Outbound) or received by us (Inbound)
+    /// based on the configured company VAT number.
+    /// </summary>
+    InvoiceDirection DetermineInvoiceDirection(ParsedInvoice parsedInvoice);
+
+    /// <summary>
+    /// Looks up (or creates) the contact representing the counterparty on a parsed invoice and
+    /// returns its id, so callers can pre-select it in a contact picker.
+    /// </summary>
+    Task<Guid?> EnsureContactForCounterpartyAsync(ParsedInvoice parsed, InvoiceDirection direction, Guid companyId);
 }
 
 public class InvoiceImportService : IInvoiceImportService
@@ -20,18 +34,27 @@ public class InvoiceImportService : IInvoiceImportService
     private readonly IMainInvoiceProvider _invoiceProvider;
     private readonly IFakturoidInvoiceProvider _fakturoidInvoiceProvider;
     private readonly IParsedInvoiceProvider _parsedInvoiceProvider;
+    private readonly IContactProvider _contactProvider;
+    private readonly IInvoiceManagementService _invoiceManagement;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<InvoiceImportService> _logger;
 
     public InvoiceImportService(
         IMainInvoiceProvider invoiceProvider,
         IFakturoidInvoiceProvider fakturoidInvoiceProvider,
         IParsedInvoiceProvider parsedInvoiceProvider,
-        IConfiguration configuration)
+        IContactProvider contactProvider,
+        IInvoiceManagementService invoiceManagement,
+        IConfiguration configuration,
+        ILogger<InvoiceImportService> logger)
     {
         _invoiceProvider = invoiceProvider;
         _fakturoidInvoiceProvider = fakturoidInvoiceProvider;
         _parsedInvoiceProvider = parsedInvoiceProvider;
+        _contactProvider = contactProvider;
+        _invoiceManagement = invoiceManagement;
         _configuration = configuration;
+        _logger = logger;
     }
 
     public async Task<Invoice> ImportFromFakturoidAsync(Guid fakturoidInvoiceId, Guid companyId)
@@ -48,6 +71,9 @@ public class InvoiceImportService : IInvoiceImportService
             throw new InvalidOperationException($"FakturoidInvoice {fakturoidInvoiceId} has already been imported");
         }
 
+        var vatDate = fakturoidInvoice.TaxableSupplyDate ?? fakturoidInvoice.IssuedOn ?? DateTime.UtcNow;
+        var internalNumber = await _invoiceManagement.GenerateInternalNumberAsync(companyId, vatDate);
+
         // Map FakturoidInvoice to Invoice
         var invoice = new Invoice
         {
@@ -58,7 +84,8 @@ public class InvoiceImportService : IInvoiceImportService
 
             // Core fields
             CustomId = fakturoidInvoice.CustomId,
-            Number = fakturoidInvoice.Number,
+            InternalNumber = internalNumber,
+            OriginalDocumentNumber = fakturoidInvoice.Number,
             DocumentType = fakturoidInvoice.DocumentType,
             Status = fakturoidInvoice.Status,
             Open = fakturoidInvoice.Open,
@@ -171,8 +198,8 @@ public class InvoiceImportService : IInvoiceImportService
             });
         }
 
-        // Create the invoice
-        var createdInvoice = await _invoiceProvider.CreateAsync(invoice);
+        // Create the invoice (with retry on InternalNumber unique-constraint clash)
+        var createdInvoice = await CreateWithCollisionRetryAsync(invoice);
 
         // Mark Fakturoid invoice as imported
         await _fakturoidInvoiceProvider.MarkAsImportedAsync(fakturoidInvoiceId, createdInvoice.Id);
@@ -219,6 +246,11 @@ public class InvoiceImportService : IInvoiceImportService
         // Determine direction based on supplier/customer VAT numbers
         var direction = DetermineInvoiceDirection(parsedInvoice);
 
+        await EnsureContactForCounterpartyAsync(parsedInvoice, direction, companyId);
+
+        var vatDate = parsedInvoice.TaxableSupplyDate ?? parsedInvoice.IssuedOn ?? DateTime.UtcNow;
+        var internalNumber = await _invoiceManagement.GenerateInternalNumberAsync(companyId, vatDate);
+
         // Map ParsedInvoice to Invoice
         var invoice = new Invoice
         {
@@ -229,7 +261,8 @@ public class InvoiceImportService : IInvoiceImportService
 
             // Core fields
             CustomId = parsedInvoice.CustomId,
-            Number = parsedInvoice.InvoiceNumber ?? "UNKNOWN",
+            InternalNumber = internalNumber,
+            OriginalDocumentNumber = parsedInvoice.InvoiceNumber,
             DocumentType = parsedInvoice.DocumentType ?? "invoice",
             Status = parsedInvoice.IsValid ? "open" : "draft",
             Open = true,
@@ -312,9 +345,48 @@ public class InvoiceImportService : IInvoiceImportService
         }
 
         // Create the invoice
-        var createdInvoice = await _invoiceProvider.CreateAsync(invoice);
+        var createdInvoice = await CreateWithCollisionRetryAsync(invoice);
 
         // Mark ParsedInvoice as imported
+        await _parsedInvoiceProvider.MarkAsImportedAsync(parsedInvoiceId, createdInvoice.Id);
+
+        return createdInvoice;
+    }
+
+    public async Task<Invoice> ImportFromEditedFormAsync(
+        Guid parsedInvoiceId,
+        Guid companyId,
+        InvoiceFormModel editedModel,
+        Guid contactId)
+    {
+        var parsedInvoice = await _parsedInvoiceProvider.GetByIdAsync(parsedInvoiceId);
+        if (parsedInvoice == null)
+        {
+            throw new InvalidOperationException($"ParsedInvoice with ID {parsedInvoiceId} not found");
+        }
+
+        if (parsedInvoice.Status == ParsedInvoiceStatus.Imported)
+        {
+            throw new InvalidOperationException($"ParsedInvoice {parsedInvoiceId} has already been imported");
+        }
+
+        if (parsedInvoice.Status != ParsedInvoiceStatus.Parsed && parsedInvoice.Status != ParsedInvoiceStatus.ReadyToImport)
+        {
+            throw new InvalidOperationException($"ParsedInvoice {parsedInvoiceId} is not ready to import (current status: {parsedInvoice.Status})");
+        }
+
+        if (string.IsNullOrWhiteSpace(editedModel.InternalNumber))
+        {
+            var vatDate = editedModel.TaxableSupplyDate;
+            editedModel.InternalNumber = await _invoiceManagement.GenerateInternalNumberAsync(companyId, vatDate);
+        }
+
+        var invoice = editedModel.ToEntity(companyId);
+        invoice.Source = InvoiceSource.ISDOC;
+        invoice.ParsedInvoiceId = parsedInvoiceId;
+
+        var createdInvoice = await CreateWithCollisionRetryAsync(invoice);
+
         await _parsedInvoiceProvider.MarkAsImportedAsync(parsedInvoiceId, createdInvoice.Id);
 
         return createdInvoice;
@@ -356,7 +428,7 @@ public class InvoiceImportService : IInvoiceImportService
         return invoice;
     }
 
-    private InvoiceDirection DetermineInvoiceDirection(ParsedInvoice parsedInvoice)
+    public InvoiceDirection DetermineInvoiceDirection(ParsedInvoice parsedInvoice)
     {
         // Get our company VAT number from configuration
         var ourVatNo = _configuration["Company:VatNo"];
@@ -383,5 +455,107 @@ public class InvoiceImportService : IInvoiceImportService
 
         // Default to inbound if we can't determine
         return InvoiceDirection.Inbound;
+    }
+
+    public async Task<Guid?> EnsureContactForCounterpartyAsync(ParsedInvoice parsed, InvoiceDirection direction, Guid companyId)
+    {
+        var kind = direction == InvoiceDirection.Inbound ? ContactKind.Supplier : ContactKind.Client;
+
+        string? name, ico, dic, street, city, zip, country;
+        if (direction == InvoiceDirection.Inbound)
+        {
+            name = parsed.SupplierName;
+            ico = parsed.SupplierRegistrationNo;
+            dic = parsed.SupplierVatNo;
+            street = parsed.SupplierStreet;
+            city = parsed.SupplierCity;
+            zip = parsed.SupplierZip;
+            country = parsed.SupplierCountry;
+        }
+        else
+        {
+            name = parsed.CustomerName;
+            ico = parsed.CustomerRegistrationNo;
+            dic = parsed.CustomerVatNo;
+            street = parsed.CustomerStreet;
+            city = parsed.CustomerCity;
+            zip = parsed.CustomerZip;
+            country = parsed.CustomerCountry;
+        }
+
+        if (string.IsNullOrWhiteSpace(ico) && string.IsNullOrWhiteSpace(dic) && string.IsNullOrWhiteSpace(name))
+        {
+            _logger.LogInformation("Skipping contact upsert: no identifying data on parsed invoice {Id}", parsed.Id);
+            return null;
+        }
+
+        var existing = await _contactProvider.FindByIdentifiersAsync(companyId, ico, dic, name);
+        if (existing != null)
+        {
+            if (existing.Kind != kind && existing.Kind != ContactKind.Both)
+            {
+                existing.Kind = ContactKind.Both;
+                await _contactProvider.UpdateAsync(existing);
+                _logger.LogInformation("Upgraded contact {Id} kind to Both", existing.Id);
+            }
+            else
+            {
+                _logger.LogInformation("Matched existing contact {Id} ({Kind})", existing.Id, existing.Kind);
+            }
+            return existing.Id;
+        }
+
+        var countryCode = !string.IsNullOrWhiteSpace(country) && country.Trim().Length == 2
+            ? country.Trim().ToUpperInvariant()
+            : "CZ";
+
+        var contact = new Contact
+        {
+            CompanyId = companyId,
+            Kind = kind,
+            CompanyName = string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
+            Ico = string.IsNullOrWhiteSpace(ico) ? null : ico.Trim(),
+            Dic = string.IsNullOrWhiteSpace(dic) ? null : dic.Trim(),
+            Street = string.IsNullOrWhiteSpace(street) ? null : street.Trim(),
+            City = string.IsNullOrWhiteSpace(city) ? null : city.Trim(),
+            Zip = string.IsNullOrWhiteSpace(zip) ? null : zip.Trim(),
+            CountryCode = countryCode,
+            IsLegalEntity = true,
+            IsActive = true,
+            VatPeriod = VatPeriod.Monthly,
+        };
+
+        if (contact.Id == Guid.Empty) contact.Id = Guid.NewGuid();
+        await _contactProvider.AddAsync(contact);
+        _logger.LogInformation("Created contact {Name} ({Kind}) from import", contact.CompanyName, contact.Kind);
+        return contact.Id;
+    }
+
+    private async Task<Invoice> CreateWithCollisionRetryAsync(Invoice invoice)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                return await _invoiceProvider.CreateAsync(invoice);
+            }
+            catch (DbUpdateException ex) when (IsInternalNumberUniqueViolation(ex) && attempt < maxAttempts)
+            {
+                _logger.LogWarning(ex, "InternalNumber collision for {InternalNumber}, regenerating (attempt {Attempt}/{MaxAttempts})",
+                    invoice.InternalNumber, attempt, maxAttempts);
+
+                var vatDate = invoice.TaxableSupplyDate ?? invoice.IssuedOn ?? DateTime.UtcNow;
+                invoice.InternalNumber = await _invoiceManagement.GenerateInternalNumberAsync(invoice.CompanyId, vatDate);
+                invoice.Id = Guid.Empty;
+            }
+        }
+
+        throw new InvalidOperationException("Failed to assign a unique InternalNumber after multiple attempts.");
+    }
+
+    private static bool IsInternalNumberUniqueViolation(DbUpdateException ex)
+    {
+        return ex.InnerException?.Message.Contains("internal_number", StringComparison.OrdinalIgnoreCase) == true;
     }
 }

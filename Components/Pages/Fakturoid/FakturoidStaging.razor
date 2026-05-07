@@ -333,7 +333,7 @@
         try
         {
             var invoice = await InvoiceImportService.ImportFromFakturoidAsync(fakturoidInvoiceId, companyId);
-            statusMessage = $"Successfully imported invoice {invoice.Number}";
+            statusMessage = $"Successfully imported invoice {invoice.InternalNumber}";
             await LoadPage(currentPage);
         }
         catch (Exception ex)

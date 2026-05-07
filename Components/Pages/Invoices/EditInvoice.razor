@@ -38,12 +38,12 @@
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="/invoices">Invoices</a></li>
-                <li class="breadcrumb-item"><a href="/invoices/@Id">@currentInvoice.Number</a></li>
+                <li class="breadcrumb-item"><a href="/invoices/@Id">@currentInvoice.InternalNumber</a></li>
                 <li class="breadcrumb-item active" aria-current="page">Edit</li>
             </ol>
         </nav>
 
-        <h1>Edit Invoice @currentInvoice.Number</h1>
+        <h1>Edit Invoice @currentInvoice.InternalNumber</h1>
         <p class="text-muted">Modify invoice details and attachments</p>
 
         @if (!string.IsNullOrEmpty(errorMessage))
@@ -86,9 +86,9 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="number" class="form-label">Invoice Number <span class="text-danger">*</span></label>
-                            <InputText id="number" class="form-control" @bind-Value="formModel.Number" />
-                            <ValidationMessage For="@(() => formModel.Number)" />
+                            <label for="number" class="form-label">Internal Number <span class="text-danger">*</span></label>
+                            <InputText id="number" class="form-control" @bind-Value="formModel.InternalNumber" />
+                            <ValidationMessage For="@(() => formModel.InternalNumber)" />
                         </div>
 
                         <div class="col-md-6 mb-3">
@@ -534,7 +534,8 @@
 
             // Update the existing invoice entity
             currentInvoice.Direction = formModel.Direction;
-            currentInvoice.Number = formModel.Number;
+            currentInvoice.InternalNumber = formModel.InternalNumber;
+            currentInvoice.OriginalDocumentNumber = formModel.OriginalDocumentNumber;
             currentInvoice.DocumentType = formModel.DocumentType;
             currentInvoice.IssuedOn = formModel.IssuedOn;
             currentInvoice.DueOn = formModel.DueOn;

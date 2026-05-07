@@ -7,9 +7,12 @@ namespace Isdocovac.Models.Forms;
 public class InvoiceFormModel
 {
     // Essential Fields
-    [Required(ErrorMessage = "Invoice number is required")]
-    [MaxLength(100, ErrorMessage = "Invoice number cannot exceed 100 characters")]
-    public string Number { get; set; } = string.Empty;
+    [Required(ErrorMessage = "Internal invoice number is required")]
+    [MaxLength(100, ErrorMessage = "Internal invoice number cannot exceed 100 characters")]
+    public string InternalNumber { get; set; } = string.Empty;
+
+    [MaxLength(100, ErrorMessage = "Original document number cannot exceed 100 characters")]
+    public string? OriginalDocumentNumber { get; set; }
 
     [Required(ErrorMessage = "Direction is required")]
     public InvoiceDirection Direction { get; set; } = InvoiceDirection.Inbound;
@@ -187,7 +190,8 @@ public class InvoiceFormModel
             CompanyId = companyId,
             Direction = Direction,
             Source = InvoiceSource.Manual, // Will be set by service, but set here for completeness
-            Number = Number,
+            InternalNumber = InternalNumber,
+            OriginalDocumentNumber = OriginalDocumentNumber,
             DocumentType = DocumentType,
             Status = "open",
             Open = true,
@@ -250,7 +254,8 @@ public class InvoiceFormModel
     {
         var formModel = new InvoiceFormModel
         {
-            Number = invoice.Number,
+            InternalNumber = invoice.InternalNumber,
+            OriginalDocumentNumber = invoice.OriginalDocumentNumber,
             Direction = invoice.Direction,
             DocumentType = invoice.DocumentType,
             IssuedOn = invoice.IssuedOn ?? DateTime.Today,

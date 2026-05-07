@@ -9,7 +9,7 @@
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
-<PageTitle>Invoice @(invoice?.Number ?? "Details")</PageTitle>
+<PageTitle>Invoice @(invoice?.InternalNumber ?? "Details")</PageTitle>
 
 <div class="container-fluid py-4">
     @if (isLoading)
@@ -46,7 +46,7 @@
                 <nav aria-label="breadcrumb">
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="/invoices">Invoices</a></li>
-                        <li class="breadcrumb-item active">@invoice.Number</li>
+                        <li class="breadcrumb-item active">@invoice.InternalNumber</li>
                     </ol>
                 </nav>
             </div>
@@ -54,7 +54,7 @@
 
         <div class="row mb-4">
             <div class="col-md-8">
-                <h1>Invoice @invoice.Number</h1>
+                <h1>Invoice @invoice.InternalNumber</h1>
                 @if (!string.IsNullOrEmpty(invoice.CustomId))
                 {
                     <p class="text-muted">Custom ID: @invoice.CustomId</p>
@@ -339,7 +339,7 @@
         ConfirmText="Delete"
         OnConfirm="DeleteInvoice"
         OnCancel="() => showDeleteConfirm = false">
-        <p>Are you sure you want to delete invoice <strong>@invoice?.Number</strong>?</p>
+        <p>Are you sure you want to delete invoice <strong>@invoice?.InternalNumber</strong>?</p>
         <div class="alert alert-warning mb-0">
             The invoice will be marked as deleted and remain available for audit purposes.
         </div>

@@ -1,0 +1,174 @@
+@page "/isdoc/parsed/{Id:guid}/import"
+@using System.Text.Json
+@using Isdocovac.Models
+@using Isdocovac.Models.Enums
+@using Isdocovac.Models.Extraction
+@using Isdocovac.Models.Forms
+@using Isdocovac.Providers
+@using Isdocovac.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IParsedInvoiceProvider ParsedInvoiceProvider
+@inject IInvoiceImportService InvoiceImportService
+@inject Isdocovac.Services.Authentication.ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Import faktury</PageTitle>
+
+@if (!_initialized)
+{
+    <div class="container mt-4 text-muted">Načítání…</div>
+}
+else if (_errorMessage != null)
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger">@_errorMessage</div>
+        <a href="/isdoc/parsed" class="btn btn-secondary">Zpět na seznam</a>
+    </div>
+}
+else if (_initialModel != null)
+{
+    <InvoiceFormEditor Direction="_direction"
+                       Mode="InvoiceFormEditor.InvoiceEditorMode.ImportFromParsed"
+                       InitialModel="_initialModel"
+                       InitialContactId="_initialContactId"
+                       ParsedInvoiceId="Id" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private InvoiceFormModel? _initialModel;
+    private InvoiceDirection _direction;
+    private Guid? _initialContactId;
+    private bool _initialized;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var parsed = await ParsedInvoiceProvider.GetByIdAsync(Id);
+            if (parsed == null)
+            {
+                _errorMessage = $"Rozparsovaná faktura {Id} nenalezena.";
+                return;
+            }
+
+            if (parsed.Status == ParsedInvoiceStatus.Imported)
+            {
+                _errorMessage = "Faktura už byla naimportována.";
+                return;
+            }
+
+            if (parsed.Status != ParsedInvoiceStatus.Parsed && parsed.Status != ParsedInvoiceStatus.ReadyToImport)
+            {
+                _errorMessage = $"Faktura není připravena k importu (stav: {parsed.Status}).";
+                return;
+            }
+
+            if (!parsed.IsValid)
+            {
+                _errorMessage = "Faktura má validační chyby a nelze ji importovat.";
+                return;
+            }
+
+            var company = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+            if (company == null)
+            {
+                _errorMessage = "Žádná aktivní společnost.";
+                return;
+            }
+
+            _direction = InvoiceImportService.DetermineInvoiceDirection(parsed);
+            _initialContactId = await InvoiceImportService.EnsureContactForCounterpartyAsync(parsed, _direction, company.Id);
+            _initialModel = BuildFormModel(parsed, _direction);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Chyba při načítání: {ex.Message}";
+        }
+        finally
+        {
+            _initialized = true;
+        }
+    }
+
+    private static InvoiceFormModel BuildFormModel(ParsedInvoice parsed, InvoiceDirection direction)
+    {
+        // The form uses semantic field names: ClientName = customer/buyer, SupplierName = seller.
+        // ApplyOwnCompanyToForm in InvoiceFormEditor will overwrite "our side" with the active
+        // company's authoritative data, so we just map ParsedInvoice → form fields directly.
+        var model = new InvoiceFormModel
+        {
+            Direction = direction,
+            DocumentType = parsed.DocumentType ?? "invoice",
+            Currency = parsed.Currency ?? "CZK",
+            // Leave InternalNumber blank — InvoiceFormEditor will generate one.
+            InternalNumber = string.Empty,
+            OriginalDocumentNumber = parsed.InvoiceNumber,
+            IssuedOn = parsed.IssuedOn ?? DateTime.Today,
+            TaxableSupplyDate = parsed.TaxableSupplyDate ?? parsed.IssuedOn ?? DateTime.Today,
+            DueOn = parsed.DueOn,
+
+            ClientName = parsed.CustomerName ?? string.Empty,
+            ClientStreet = parsed.CustomerStreet,
+            ClientCity = parsed.CustomerCity,
+            ClientZip = parsed.CustomerZip,
+            ClientCountry = parsed.CustomerCountry,
+            ClientRegistrationNo = parsed.CustomerRegistrationNo,
+            ClientVatNo = parsed.CustomerVatNo,
+
+            SupplierName = parsed.SupplierName ?? string.Empty,
+            SupplierStreet = parsed.SupplierStreet,
+            SupplierCity = parsed.SupplierCity,
+            SupplierZip = parsed.SupplierZip,
+            SupplierCountry = parsed.SupplierCountry,
+            SupplierRegistrationNo = parsed.SupplierRegistrationNo,
+            SupplierVatNo = parsed.SupplierVatNo,
+
+            VariableSymbol = parsed.VariableSymbol,
+            ConstantSymbol = parsed.ConstantSymbol,
+            SpecificSymbol = parsed.SpecificSymbol,
+            BankAccount = parsed.BankAccount,
+            Iban = parsed.Iban,
+            Note = parsed.Note,
+        };
+
+        if (!string.IsNullOrEmpty(parsed.LinesJson))
+        {
+            try
+            {
+                var lines = JsonSerializer.Deserialize<List<InvoiceLineItem>>(parsed.LinesJson);
+                if (lines != null)
+                {
+                    foreach (var line in lines)
+                    {
+                        model.Lines.Add(new InvoiceLineFormModel
+                        {
+                            Name = line.Name,
+                            Quantity = line.Quantity,
+                            UnitName = line.UnitName,
+                            UnitPrice = line.UnitPrice,
+                            VatRate = line.VatRate,
+                            TotalPriceWithoutVat = line.TotalPriceWithoutVat,
+                            TotalVat = line.TotalVat,
+                            TotalPriceWithVat = line.TotalPriceWithVat,
+                            Sku = line.Sku,
+                        });
+                    }
+                }
+            }
+            catch (JsonException) { /* fall through with empty lines */ }
+        }
+
+        if (model.Lines.Count == 0)
+        {
+            model.Lines.Add(new InvoiceLineFormModel());
+        }
+
+        model.RecalculateTotals();
+        return model;
+    }
+}

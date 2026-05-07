@@ -352,18 +352,12 @@
 
     private MarkupString GetStatusBadge(ParsedInvoiceStatus status)
     {
-        var (badgeClass, text) = status switch
-        {
-            ParsedInvoiceStatus.Uploaded => ("bg-secondary", "Uploaded"),
-            ParsedInvoiceStatus.Parsing => ("bg-primary", "Processing"),
-            ParsedInvoiceStatus.Parsed => ("bg-success", "Parsed"),
-            ParsedInvoiceStatus.ValidationFailed => ("bg-warning", "Validation Failed"),
-            ParsedInvoiceStatus.ReadyToImport => ("bg-info", "Ready to Import"),
-            ParsedInvoiceStatus.Imported => ("bg-dark", "Imported"),
-            _ => ("bg-secondary", "Unknown")
-        };
+        var isValid = parsedInvoice?.IsValid ?? true;
+        var cssClass = ParsedInvoiceStatusInfo.BadgeCssClass(status, isValid);
+        var label = ParsedInvoiceStatusInfo.Label(status, isValid);
+        var description = ParsedInvoiceStatusInfo.Description(status, isValid);
 
-        return new MarkupString($"<span class=\"badge {badgeClass}\">{text}</span>");
+        return new MarkupString($"<span class=\"badge {cssClass}\" title=\"{System.Net.WebUtility.HtmlEncode(description)}\">{System.Net.WebUtility.HtmlEncode(label)}</span>");
     }
 
     private JsonElement[] GetLineItems()

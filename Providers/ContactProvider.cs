@@ -10,6 +10,7 @@ public interface IContactProvider
     Task<IEnumerable<Contact>> GetByKindAsync(Guid companyId, ContactKind kind);
     Task<IReadOnlyList<Contact>> ListDirectoryAsync(Guid companyId);
     Task<Contact?> GetByIdAsync(Guid id);
+    Task<Contact?> FindByIdentifiersAsync(Guid companyId, string? ico, string? dic, string? companyName);
     Task<Contact> AddAsync(Contact contact);
     Task<Contact> UpdateAsync(Contact contact);
     Task DeleteAsync(Guid id);
@@ -82,6 +83,41 @@ public class ContactProvider : IContactProvider
     public Task<Contact?> GetByIdAsync(Guid id)
     {
         return _context.Contacts.FirstOrDefaultAsync(c => c.Id == id);
+    }
+
+    public async Task<Contact?> FindByIdentifiersAsync(Guid companyId, string? ico, string? dic, string? companyName)
+    {
+        var icoTrim = ico?.Trim();
+        if (!string.IsNullOrEmpty(icoTrim))
+        {
+            var byIco = await _context.Contacts
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId
+                    && c.Ico != null
+                    && c.Ico.Trim().ToLower() == icoTrim.ToLower());
+            if (byIco != null) return byIco;
+        }
+
+        var dicTrim = dic?.Trim();
+        if (!string.IsNullOrEmpty(dicTrim))
+        {
+            var byDic = await _context.Contacts
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId
+                    && c.Dic != null
+                    && c.Dic.Trim().ToLower() == dicTrim.ToLower());
+            if (byDic != null) return byDic;
+        }
+
+        var nameTrim = companyName?.Trim();
+        if (!string.IsNullOrEmpty(nameTrim))
+        {
+            var byName = await _context.Contacts
+                .FirstOrDefaultAsync(c => c.CompanyId == companyId
+                    && c.CompanyName != null
+                    && c.CompanyName.Trim().ToLower() == nameTrim.ToLower());
+            if (byName != null) return byName;
+        }
+
+        return null;
     }
 
     public async Task DeleteAsync(Guid id)

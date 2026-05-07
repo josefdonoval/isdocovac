@@ -6,7 +6,6 @@
 @using Isdocovac.Providers
 @using Microsoft.AspNetCore.Authorization
 @inject IParsedInvoiceService ParsedInvoiceService
-@inject IInvoiceImportService InvoiceImportService
 @inject IParsedInvoiceProcessingProvider ProcessingProvider
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -14,16 +13,16 @@
 @attribute [Authorize]
 @rendermode InteractiveServer
 
-<PageTitle>Parsed ISDOC Invoices</PageTitle>
+<PageTitle>Rozparsované faktury</PageTitle>
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h1>Parsed ISDOC Invoices</h1>
-            <p class="text-muted">Review and import ISDOC invoices</p>
+            <h1>Rozparsované faktury</h1>
+            <p class="text-muted">Zkontrolujte a naimportujte rozpoznané doklady</p>
         </div>
         <button class="btn btn-primary" @onclick="NavigateToUpload">
-            Upload New ISDOC
+            Nahrát nový doklad
         </button>
     </div>
 
@@ -31,19 +30,19 @@
         <div class="btn-group" role="group">
             <button type="button" class="btn @(selectedStatus == null ? "btn-primary" : "btn-outline-primary")"
                     @onclick="() => FilterByStatus(null)">
-                All
+                Vše
             </button>
             <button type="button" class="btn @(selectedStatus == ParsedInvoiceStatus.Parsed ? "btn-primary" : "btn-outline-primary")"
                     @onclick="() => FilterByStatus(ParsedInvoiceStatus.Parsed)">
-                Parsed
+                @ParsedInvoiceStatusInfo.Label(ParsedInvoiceStatus.Parsed)
             </button>
             <button type="button" class="btn @(selectedStatus == ParsedInvoiceStatus.ReadyToImport ? "btn-primary" : "btn-outline-primary")"
                     @onclick="() => FilterByStatus(ParsedInvoiceStatus.ReadyToImport)">
-                Ready to Import
+                @ParsedInvoiceStatusInfo.Label(ParsedInvoiceStatus.ReadyToImport)
             </button>
             <button type="button" class="btn @(selectedStatus == ParsedInvoiceStatus.Imported ? "btn-primary" : "btn-outline-primary")"
                     @onclick="() => FilterByStatus(ParsedInvoiceStatus.Imported)">
-                Imported
+                @ParsedInvoiceStatusInfo.Label(ParsedInvoiceStatus.Imported)
             </button>
         </div>
     </div>
@@ -52,9 +51,9 @@
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
+                <span class="visually-hidden">Načítání…</span>
             </div>
-            <p class="mt-2">Loading parsed invoices...</p>
+            <p class="mt-2">Načítám rozparsované faktury…</p>
         </div>
     }
     else if (!string.IsNullOrEmpty(errorMessage))
@@ -66,15 +65,15 @@
     else if (parsedInvoices == null || !parsedInvoices.Any())
     {
         <div class="alert alert-info">
-            <h4 class="alert-heading">No parsed invoices found</h4>
+            <h4 class="alert-heading">Žádné rozparsované faktury</h4>
             <p>
                 @if (selectedStatus.HasValue)
                 {
-                    <span>No invoices with status "@selectedStatus.Value". Try a different filter or upload new ISDOC files.</span>
+                    <span>V zvoleném stavu „@ParsedInvoiceStatusInfo.Label(selectedStatus.Value)" nejsou žádné doklady. Zkuste jiný filtr nebo nahrajte nový doklad.</span>
                 }
                 else
                 {
-                    <span>You haven't uploaded any ISDOC invoices yet. Click the button above to upload your first invoice.</span>
+                    <span>Zatím jste nenahráli žádný doklad. Použijte tlačítko nahoře pro první nahrání.</span>
                 }
             </p>
         </div>
@@ -85,13 +84,13 @@
             <table class="table table-hover">
                 <thead>
                     <tr>
-                        <th>Invoice Number</th>
-                        <th>Issued Date</th>
-                        <th>Supplier</th>
-                        <th>Total</th>
-                        <th>Status</th>
-                        <th>Uploaded</th>
-                        <th>Actions</th>
+                        <th>Číslo dokladu</th>
+                        <th>Datum vystavení</th>
+                        <th>Dodavatel</th>
+                        <th>Celkem</th>
+                        <th>Stav</th>
+                        <th>Nahráno</th>
+                        <th>Akce</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -123,34 +122,10 @@
                                 }
                             </td>
                             <td>
-                                @switch (parsedInvoice.Status)
-                                {
-                                    case ParsedInvoiceStatus.Uploaded:
-                                        <span class="badge bg-secondary">Uploaded</span>
-                                        break;
-                                    case ParsedInvoiceStatus.Parsing:
-                                        <span class="badge bg-info">Parsing</span>
-                                        break;
-                                    case ParsedInvoiceStatus.Parsed:
-                                        @if (parsedInvoice.IsValid)
-                                        {
-                                            <span class="badge bg-success">Parsed</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-warning">Parsed (Invalid)</span>
-                                        }
-                                        break;
-                                    case ParsedInvoiceStatus.ValidationFailed:
-                                        <span class="badge bg-danger">Validation Failed</span>
-                                        break;
-                                    case ParsedInvoiceStatus.ReadyToImport:
-                                        <span class="badge bg-primary">Ready to Import</span>
-                                        break;
-                                    case ParsedInvoiceStatus.Imported:
-                                        <span class="badge bg-success">Imported</span>
-                                        break;
-                                }
+                                <span class="badge @ParsedInvoiceStatusInfo.BadgeCssClass(parsedInvoice.Status, parsedInvoice.IsValid)"
+                                      title="@ParsedInvoiceStatusInfo.Description(parsedInvoice.Status, parsedInvoice.IsValid)">
+                                    @ParsedInvoiceStatusInfo.Label(parsedInvoice.Status, parsedInvoice.IsValid)
+                                </span>
                             </td>
                             <td>@parsedInvoice.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
                             <td>
@@ -158,43 +133,36 @@
                                     @if (parsedInvoice.Status == ParsedInvoiceStatus.Imported && parsedInvoice.ImportedInvoiceId.HasValue)
                                     {
                                         <a href="/invoices/@parsedInvoice.ImportedInvoiceId" class="btn btn-sm btn-primary">
-                                            View Invoice
+                                            Otevřít fakturu
                                         </a>
                                     }
                                     else if (parsedInvoice.Status == ParsedInvoiceStatus.Parsed || parsedInvoice.Status == ParsedInvoiceStatus.ReadyToImport)
                                     {
                                         @if (parsedInvoice.IsValid)
                                         {
-                                            <button class="btn btn-outline-success"
-                                                    @onclick="() => ImportParsedInvoice(parsedInvoice.Id)"
-                                                    disabled="@importingInvoices.Contains(parsedInvoice.Id)">
-                                                @if (importingInvoices.Contains(parsedInvoice.Id))
-                                                {
-                                                    <span class="spinner-border spinner-border-sm me-1"></span>
-                                                    <span>Importing...</span>
-                                                }
-                                                else
-                                                {
-                                                    <span>Import</span>
-                                                }
-                                            </button>
+                                            <a class="btn btn-outline-success"
+                                               href="@($"/isdoc/parsed/{parsedInvoice.Id}/import")">
+                                                Zkontrolovat a importovat
+                                            </a>
                                         }
                                         else
                                         {
-                                            <button class="btn btn-outline-secondary" disabled title="Cannot import invalid invoice">
-                                                Invalid
-                                            </button>
+                                            <a class="btn btn-outline-warning"
+                                               href="@($"/isdoc/parsed/{parsedInvoice.Id}/import")"
+                                               title="Data obsahují validační chyby — před importem je opravte">
+                                                Opravit a importovat
+                                            </a>
                                         }
                                     }
                                     else if (parsedInvoice.Status == ParsedInvoiceStatus.Uploaded || parsedInvoice.Status == ParsedInvoiceStatus.ValidationFailed)
                                     {
-                                        <button class="btn btn-outline-primary" @onclick="() => StartParsing(parsedInvoice.Id)" title="Parse">
-                                            Re-parse
+                                        <button class="btn btn-outline-primary" @onclick="() => StartParsing(parsedInvoice.Id)" title="Spustit nové zpracování">
+                                            Zpracovat znovu
                                         </button>
                                     }
 
-                                    <button class="btn btn-outline-danger" @onclick="() => DeleteParsedInvoice(parsedInvoice.Id)" title="Delete">
-                                        Delete
+                                    <button class="btn btn-outline-danger" @onclick="() => DeleteParsedInvoice(parsedInvoice.Id)" title="Smazat">
+                                        Smazat
                                     </button>
                                 </div>
                             </td>
@@ -206,7 +174,7 @@
                                 <td colspan="7" class="bg-light">
                                     <div class="p-2">
                                         <small class="text-danger">
-                                            <strong>Validation Errors:</strong><br>
+                                            <strong>Validační chyby:</strong><br>
                                             @parsedInvoice.ValidationErrors
                                         </small>
                                     </div>
@@ -229,7 +197,6 @@
     private string? errorMessage;
     private Guid companyId;
     private ParsedInvoiceStatus? selectedStatus = null;
-    private HashSet<Guid> importingInvoices = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -265,28 +232,6 @@
     {
         selectedStatus = status;
         await LoadParsedInvoices();
-    }
-
-    private async Task ImportParsedInvoice(Guid parsedInvoiceId)
-    {
-        importingInvoices.Add(parsedInvoiceId);
-        StateHasChanged();
-
-        try
-        {
-            var invoice = await InvoiceImportService.ImportFromParsedInvoiceAsync(parsedInvoiceId, companyId);
-            errorMessage = null;
-            await LoadParsedInvoices();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error importing invoice: {ex.Message}";
-        }
-        finally
-        {
-            importingInvoices.Remove(parsedInvoiceId);
-            StateHasChanged();
-        }
     }
 
     private async Task StartParsing(Guid parsedInvoiceId)
