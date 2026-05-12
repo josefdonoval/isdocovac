@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: isdocovac_db
+      POSTGRES_USER: isdocovac_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isdocovac_user -d isdocovac_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=postgres;Database=isdocovac_db;Username=isdocovac_user;Password=${POSTGRES_PASSWORD};Trust Server Certificate=true"
+      AzureStorage__ConnectionString: "${AZURE_STORAGE_CONNECTION_STRING:?set AZURE_STORAGE_CONNECTION_STRING}"
+      EmailIngestion__Enabled: "true"
+      EmailIngestion__EncryptionKey: "${EMAIL_INGESTION_ENCRYPTION_KEY:?set EMAIL_INGESTION_ENCRYPTION_KEY (Base64 32B)}"
+      Claude__ApiKey: "${CLAUDE_API_KEY:-}"
+      Email__Loops__ApiKey: "${LOOPS_API_KEY:-}"
+      Fakturoid__ClientId: "${FAKTUROID_CLIENT_ID:-}"
+      Fakturoid__ClientSecret: "${FAKTUROID_CLIENT_SECRET:-}"
+    ports:
+      - "${APP_HTTP_PORT:-8080}:8080"
+
+  # Optional services for local dev / future use — enable by uncommenting:
+  #
+  # mailhog:
+  #   image: mailhog/mailhog:latest
+  #   ports:
+  #     - "8025:8025"  # Web UI
+  #     - "1025:1025"  # SMTP
+  #
+  # clamav:
+  #   image: clamav/clamav:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3310:3310"
+
+volumes:
+  pgdata:

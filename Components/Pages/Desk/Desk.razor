@@ -1,0 +1,634 @@
+@page "/desk"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using Isdocovac.Models.Enums
+@using Isdocovac.Models.Inbox
+@using Isdocovac.Providers
+@using Isdocovac.Providers.Email
+@using Isdocovac.Providers.Inbox
+@using Isdocovac.Services
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Email.Ingestion
+@inject IExternalOriginFileProvider FileProvider
+@inject IMailboxAccountProvider MailboxProvider
+@inject IEmailIngestionService IngestionService
+@inject IParsedInvoiceService ParsedInvoiceService
+@inject IAzureBlobStorageProvider BlobStorage
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+@inject NavigationManager NavigationManager
+@inject IWebHostEnvironment Environment
+@inject ILogger<Desk> Logger
+
+<PageTitle>Stůl - Isdocovac</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h2 class="mb-1">Stůl</h2>
+            <p class="text-muted mb-0">Přílohy přijaté z externích zdrojů čekající na vyřešení.</p>
+        </div>
+        <div class="d-flex gap-2">
+            @if (mailboxes.Count > 0)
+            {
+                <button type="button" class="btn btn-outline-primary" @onclick="PullAllNow" disabled="@isPulling">
+                    @if (isPulling)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        <span>Stahuji…</span>
+                    }
+                    else
+                    {
+                        <span>Stáhnout teď</span>
+                    }
+                </button>
+            }
+            <a class="btn btn-outline-secondary" href="/settings/mailboxes">Schránky</a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert @statusClass" role="alert">@statusMessage</div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="text-center my-5"><div class="spinner-border" role="status"></div></div>
+    }
+    else if (mailboxes.Count == 0 && allRows.Count == 0)
+    {
+        <div class="card"><div class="card-body">
+            <h5>Žádná schránka není nastavená</h5>
+            <p class="text-muted">Pro automatický import emailových příloh nejprve nastavte přístup k IMAP schránce.</p>
+            <a class="btn btn-primary" href="/settings/mailboxes">Přidat schránku</a>
+        </div></div>
+    }
+    else
+    {
+        <div class="card mb-3"><div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small mb-0">Hledat (název, odesílatel, předmět)</label>
+                    <input class="form-control form-control-sm" @bind="searchText" @bind:event="oninput" placeholder="..." />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0">Stav</label>
+                    <select class="form-select form-select-sm" @bind="statusFilter">
+                        <option value="OnDesk">Na stole</option>
+                        <option value="Imported">Importované</option>
+                        <option value="Discarded">Zahozené</option>
+                        <option value="All">Všechny</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0">Zdroj</label>
+                    <select class="form-select form-select-sm" @bind="originFilter">
+                        <option value="">Všechny</option>
+                        <option value="Email">Email</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-0">Typ</label>
+                    <select class="form-select form-select-sm" @bind="candidateFilter">
+                        <option value="">Vše</option>
+                        <option value="invoice">Jen kandidáti faktur</option>
+                        <option value="other">Jen ostatní</option>
+                    </select>
+                </div>
+                <div class="col-md-3 text-end">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetFilters">Vyčistit filtry</button>
+                </div>
+            </div>
+        </div></div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="text-muted small">
+                Zobrazeno <strong>@Visible.Count</strong> z @allRows.Count
+                @if (AnySelected)
+                {
+                    <span class="ms-3">Vybráno: <strong>@selected.Count</strong></span>
+                }
+            </div>
+            <div>
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="StartBulkDelete" disabled="@(!AnySelected)">
+                    Smazat vybrané
+                </button>
+            </div>
+        </div>
+
+        @if (Visible.Count == 0)
+        {
+            <div class="alert alert-light border" role="status">Žádné záznamy odpovídající filtru.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width: 36px">
+                                <input type="checkbox" class="form-check-input" checked="@AllVisibleSelected" @onchange="@(e => ToggleSelectAll(Visible, (bool)e.Value!))" />
+                            </th>
+                            <th style="width: 110px; cursor: pointer" @onclick="@(() => Sort(SortKey.Origin))">@SortHeader("Zdroj", SortKey.Origin)</th>
+                            <th style="cursor: pointer" @onclick="@(() => Sort(SortKey.FileName))">@SortHeader("Soubor", SortKey.FileName)</th>
+                            <th style="cursor: pointer" @onclick="@(() => Sort(SortKey.From))">@SortHeader("Od", SortKey.From)</th>
+                            <th style="cursor: pointer" @onclick="@(() => Sort(SortKey.Subject))">@SortHeader("Předmět", SortKey.Subject)</th>
+                            <th style="width: 160px; cursor: pointer" @onclick="@(() => Sort(SortKey.CreatedAt))">@SortHeader("Přijato", SortKey.CreatedAt)</th>
+                            <th style="width: 280px" class="text-end">Akce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Visible)
+                    {
+                        var isImported = row.File.Status == ExternalOriginFileStatus.Imported;
+                        var isDiscarded = row.File.Status == ExternalOriginFileStatus.Discarded;
+                        <tr class="@(row.File.IsInvoiceCandidate && !isImported && !isDiscarded ? "table-warning" : "")">
+                            <td>
+                                <input type="checkbox" class="form-check-input" checked="@selected.Contains(row.File.Id)" @onchange="@(e => ToggleOne(row.File.Id, (bool)e.Value!))" />
+                            </td>
+                            <td><span class="badge bg-secondary">@row.File.Origin</span></td>
+                            <td>
+                                <div class="fw-semibold">@row.File.FileName</div>
+                                <div class="text-muted small">
+                                    @row.File.ContentType — @FormatSize(row.File.SizeBytes)
+                                    @if (row.File.IsInvoiceCandidate)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-2">Faktura?</span>
+                                    }
+                                    @if (row.File.Oversized)
+                                    {
+                                        <span class="badge bg-danger ms-2">Příliš velké</span>
+                                    }
+                                    @if (isImported)
+                                    {
+                                        <span class="badge bg-success ms-2">Importováno</span>
+                                    }
+                                    @if (isDiscarded)
+                                    {
+                                        <span class="badge bg-secondary ms-2">Zahozeno</span>
+                                    }
+                                </div>
+                            </td>
+                            <td class="small">@row.EmailMessage?.From</td>
+                            <td class="small">@row.EmailMessage?.Subject</td>
+                            <td class="small">@row.File.CreatedAt.ToLocalTime().ToString("g")</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenPreview(row.File)" disabled="@row.File.Oversized">
+                                    Náhled
+                                </button>
+                                @if (row.File.IsInvoiceCandidate && !row.File.Oversized && !isImported && !isDiscarded)
+                                {
+                                    <button type="button" class="btn btn-sm btn-primary ms-1" @onclick="() => StartImport(row.File)" disabled="@(importingFileId == row.File.Id)">
+                                        @if (importingFileId == row.File.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <span>Importovat fakturu</span>
+                                        }
+                                    </button>
+                                }
+                                @if (!isDiscarded && !isImported)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Discard(row.File.Id)">
+                                        Zahodit
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@if (previewFile != null)
+{
+    <FilePreview File="previewFile" SasUrl="@previewSasUrl" XmlPretty="@previewXmlPretty" ErrorMessage="@previewError" OnClose="ClosePreview" />
+}
+
+@if (importConfirmFile != null)
+{
+    <div class="modal d-block" tabindex="-1" role="dialog" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Importovat jako fakturu</h5>
+                    <button type="button" class="btn-close" @onclick="CancelImport"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2"><strong>@importConfirmFile.FileName</strong></p>
+                    @if (importConfirmIsPdf)
+                    {
+                        <div class="alert alert-info py-2 small mb-3">
+                            U PDF se spustí AI extrakce přes Claude API (placená služba). Vyberte, jak chcete položky zpracovat:
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="importLineMode" id="lineModeDetailed"
+                                   checked="@(importLineMode == InvoiceLineMode.Detailed)"
+                                   @onchange="@(() => importLineMode = InvoiceLineMode.Detailed)" />
+                            <label class="form-check-label" for="lineModeDetailed">
+                                <strong>Detailní položky</strong> — extrahovat jednotlivé řádky s množstvím, cenami a DPH
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="importLineMode" id="lineModeOverall"
+                                   checked="@(importLineMode == InvoiceLineMode.Overall)"
+                                   @onchange="@(() => importLineMode = InvoiceLineMode.Overall)" />
+                            <label class="form-check-label" for="lineModeOverall">
+                                <strong>Souhrn</strong> — jeden řádek se součtem
+                            </label>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-0">
+                            Soubor projde standardním import procesem (parsing běží na pozadí). Po startu vás přesměrujeme na seznam <em>Parsed ISDOC</em>, kde uvidíte průběh.
+                        </p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelImport">Zrušit</button>
+                    <button type="button" class="btn btn-primary" @onclick="ConfirmImport" disabled="@(importingFileId != null)">
+                        @if (importingFileId != null)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        <span>Spustit import</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm)
+{
+    <div class="modal d-block" tabindex="-1" role="dialog" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Smazat vybrané soubory?</h5>
+                    <button type="button" class="btn-close" @onclick="CancelBulkDelete"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Chystáte se trvale smazat <strong>@selected.Count</strong> souborů včetně jejich uložených příloh. Tuto akci nelze vrátit.</p>
+                    <p class="text-muted small mb-0">Pokud chcete soubory pouze odstranit ze stolu, použijte „Zahodit".</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelBulkDelete">Zrušit</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmBulkDelete" disabled="@isDeleting">
+                        @if (isDeleting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        <span>Trvale smazat</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private enum SortKey { Origin, FileName, From, Subject, CreatedAt }
+
+    private List<DeskRow> allRows = new();
+    private List<Isdocovac.Models.Email.MailboxAccount> mailboxes = new();
+    private bool isLoading = true;
+    private bool isPulling;
+    private bool isDeleting;
+    private bool showDeleteConfirm;
+    private Guid? importingFileId;
+    private string? statusMessage;
+    private string statusClass = "alert-info";
+    private Guid? activeCompanyId;
+
+    private HashSet<Guid> selected = new();
+
+    // Filters
+    private string searchText = string.Empty;
+    private string statusFilter = "OnDesk";
+    private string originFilter = string.Empty;
+    private string candidateFilter = string.Empty;
+
+    // Sorting
+    private SortKey sortKey = SortKey.CreatedAt;
+    private bool sortDescending = true;
+
+    private ExternalOriginFile? previewFile;
+    private string? previewSasUrl;
+    private string? previewXmlPretty;
+    private string? previewError;
+
+    // Import-confirmation state
+    private ExternalOriginFile? importConfirmFile;
+    private bool importConfirmIsPdf;
+    private InvoiceLineMode importLineMode = InvoiceLineMode.Detailed;
+
+    // Recomputed each render — fine for desk-sized lists. Filters live in instance state.
+    private List<DeskRow> Visible => ApplyFilterAndSort(allRows);
+    private bool AllVisibleSelected => Visible.Count > 0 && Visible.All(r => selected.Contains(r.File.Id));
+    private bool AnySelected => selected.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        isLoading = true;
+        var company = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+        activeCompanyId = company?.Id;
+        if (activeCompanyId == null)
+        {
+            isLoading = false;
+            return;
+        }
+        mailboxes = (await MailboxProvider.ListByCompanyAsync(activeCompanyId.Value)).ToList();
+        // Pull all statuses; UI filters client-side so user can switch quickly without round-trips.
+        allRows = (await FileProvider.GetDeskAsync(activeCompanyId.Value, status: null)).ToList();
+        // Drop selections that no longer exist (e.g. after delete).
+        var validIds = allRows.Select(r => r.File.Id).ToHashSet();
+        selected.RemoveWhere(id => !validIds.Contains(id));
+        isLoading = false;
+    }
+
+    private List<DeskRow> ApplyFilterAndSort(List<DeskRow> source)
+    {
+        IEnumerable<DeskRow> q = source;
+
+        if (statusFilter != "All" && Enum.TryParse<ExternalOriginFileStatus>(statusFilter, out var st))
+        {
+            q = q.Where(r => r.File.Status == st);
+        }
+
+        if (!string.IsNullOrWhiteSpace(originFilter) && Enum.TryParse<ExternalFileOrigin>(originFilter, out var origin))
+        {
+            q = q.Where(r => r.File.Origin == origin);
+        }
+
+        if (candidateFilter == "invoice")
+        {
+            q = q.Where(r => r.File.IsInvoiceCandidate);
+        }
+        else if (candidateFilter == "other")
+        {
+            q = q.Where(r => !r.File.IsInvoiceCandidate);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var needle = searchText.Trim();
+            q = q.Where(r =>
+                (r.File.FileName?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.EmailMessage?.From?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.EmailMessage?.Subject?.Contains(needle, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        Func<DeskRow, object?> keySelector = sortKey switch
+        {
+            SortKey.Origin => r => r.File.Origin.ToString(),
+            SortKey.FileName => r => r.File.FileName,
+            SortKey.From => r => r.EmailMessage?.From ?? string.Empty,
+            SortKey.Subject => r => r.EmailMessage?.Subject ?? string.Empty,
+            SortKey.CreatedAt => r => r.File.CreatedAt,
+            _ => r => r.File.CreatedAt
+        };
+
+        q = sortDescending ? q.OrderByDescending(keySelector) : q.OrderBy(keySelector);
+        return q.ToList();
+    }
+
+    private void Sort(SortKey key)
+    {
+        if (sortKey == key)
+        {
+            sortDescending = !sortDescending;
+        }
+        else
+        {
+            sortKey = key;
+            sortDescending = key == SortKey.CreatedAt; // default to newest-first for dates
+        }
+    }
+
+    private MarkupString SortHeader(string label, SortKey key)
+    {
+        var arrow = sortKey == key ? (sortDescending ? " ▼" : " ▲") : string.Empty;
+        return new MarkupString($"{System.Net.WebUtility.HtmlEncode(label)}<span class=\"text-muted\">{arrow}</span>");
+    }
+
+    private void ResetFilters()
+    {
+        searchText = string.Empty;
+        statusFilter = "OnDesk";
+        originFilter = string.Empty;
+        candidateFilter = string.Empty;
+    }
+
+    private void ToggleSelectAll(List<DeskRow> visible, bool check)
+    {
+        if (check)
+        {
+            foreach (var row in visible) selected.Add(row.File.Id);
+        }
+        else
+        {
+            foreach (var row in visible) selected.Remove(row.File.Id);
+        }
+    }
+
+    private void ToggleOne(Guid id, bool check)
+    {
+        if (check) selected.Add(id);
+        else selected.Remove(id);
+    }
+
+    private void StartBulkDelete() => showDeleteConfirm = selected.Count > 0;
+    private void CancelBulkDelete() => showDeleteConfirm = false;
+
+    private async Task ConfirmBulkDelete()
+    {
+        if (activeCompanyId == null || selected.Count == 0) return;
+        isDeleting = true;
+        try
+        {
+            var deleted = await FileProvider.DeleteManyAsync(activeCompanyId.Value, selected);
+            statusMessage = $"Smazáno {deleted} souborů.";
+            statusClass = "alert-success";
+            selected.Clear();
+            showDeleteConfirm = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Mazání selhalo: {ex.Message}";
+            statusClass = "alert-danger";
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private async Task PullAllNow()
+    {
+        if (mailboxes.Count == 0) return;
+        isPulling = true;
+        statusMessage = null;
+        try
+        {
+            var totalIngested = 0;
+            foreach (var mb in mailboxes.Where(m => m.Enabled))
+            {
+                totalIngested += await IngestionService.PullMailboxOnceAsync(mb.Id);
+            }
+            statusMessage = totalIngested > 0
+                ? $"Stáhnuto {totalIngested} nových zpráv."
+                : "Schránky jsou aktuální, žádné nové zprávy.";
+            statusClass = "alert-success";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Chyba při stahování: {ex.Message}";
+            statusClass = "alert-danger";
+        }
+        finally
+        {
+            isPulling = false;
+            await ReloadAsync();
+        }
+    }
+
+    private void StartImport(ExternalOriginFile file)
+    {
+        if (file.BlobName == null || file.BlobContainerName == null) return;
+        importConfirmFile = file;
+        importConfirmIsPdf = IsPdf(file);
+        importLineMode = InvoiceLineMode.Detailed;
+    }
+
+    private void CancelImport()
+    {
+        importConfirmFile = null;
+    }
+
+    private async Task ConfirmImport()
+    {
+        var file = importConfirmFile;
+        if (file == null || file.BlobName == null || file.BlobContainerName == null) return;
+
+        importingFileId = file.Id;
+        try
+        {
+            InvoiceLineMode? lineMode = importConfirmIsPdf ? importLineMode : null;
+            var parsed = await ParsedInvoiceService.IngestFromExistingBlobAsync(
+                companyId: file.CompanyId,
+                blobContainerName: file.BlobContainerName,
+                blobName: file.BlobName,
+                fileName: file.FileName,
+                fileSize: file.SizeBytes,
+                contentType: file.ContentType,
+                lineMode: lineMode);
+            await FileProvider.MarkImportedAsync(file.Id, parsed.Id);
+
+            // PDF parses async via Claude; XML parses fast; image is already at Parsed.
+            // Send the user to the parsed-invoices list so they can watch the status and click in
+            // when it's ready — avoids the import page blocking on "stav: Uploaded".
+            NavigationManager.NavigateTo("/isdoc/parsed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Import from desk failed for file {FileId}.", file.Id);
+            statusMessage = $"Import selhal: {ex.Message}";
+            statusClass = "alert-danger";
+            importingFileId = null;
+            importConfirmFile = null;
+        }
+    }
+
+    private static bool IsPdf(ExternalOriginFile file)
+    {
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        return ext == ".pdf" || (file.ContentType ?? string.Empty).Contains("pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task Discard(Guid fileId)
+    {
+        await FileProvider.MarkDiscardedAsync(fileId);
+        await ReloadAsync();
+    }
+
+    private async Task OpenPreview(ExternalOriginFile file)
+    {
+        if (file.BlobName == null || file.BlobContainerName == null) return;
+
+        previewFile = file;
+        previewSasUrl = null;
+        previewXmlPretty = null;
+        previewError = null;
+
+        try
+        {
+            previewSasUrl = await BlobStorage.GenerateSasUrlAsync(file.BlobContainerName, file.BlobName, expirationMinutes: 10);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to generate SAS URL for {BlobName} in {Container}.", file.BlobName, file.BlobContainerName);
+            previewError = $"{ex.Message} (kontejner: {file.BlobContainerName}, blob: {file.BlobName})";
+            return;
+        }
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext is ".xml" or ".isdoc" or ".isdocx")
+        {
+            try
+            {
+                using var stream = await BlobStorage.DownloadBlobAsync(file.BlobContainerName, file.BlobName);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                if (ms.Length <= 1_048_576) // 1 MB cap for inline render
+                {
+                    var settings = new System.Xml.XmlReaderSettings
+                    {
+                        DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+                        XmlResolver = null
+                    };
+                    ms.Position = 0;
+                    using var reader = System.Xml.XmlReader.Create(ms, settings);
+                    var doc = System.Xml.Linq.XDocument.Load(reader);
+                    previewXmlPretty = doc.ToString();
+                }
+                else
+                {
+                    previewXmlPretty = "(soubor je větší než 1 MB — zobrazte přes stažení)";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to render XML preview for {BlobName}.", file.BlobName);
+                previewXmlPretty = $"Nelze zobrazit XML: {ex.Message}";
+            }
+        }
+    }
+
+    private void ClosePreview()
+    {
+        previewFile = null;
+        previewSasUrl = null;
+        previewXmlPretty = null;
+        previewError = null;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} KB";
+        return $"{bytes / (1024.0 * 1024.0):0.#} MB";
+    }
+}

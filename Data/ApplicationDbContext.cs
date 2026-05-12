@@ -1,5 +1,7 @@
 using Isdocovac.Models;
+using Isdocovac.Models.Email;
 using Isdocovac.Models.Enums;
+using Isdocovac.Models.Inbox;
 using Microsoft.EntityFrameworkCore;
 
 namespace Isdocovac.Data;
@@ -46,6 +48,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<Share> Shares { get; set; }
     public DbSet<ShareQuote> ShareQuotes { get; set; }
     public DbSet<BrokerImport> BrokerImports { get; set; }
+
+    // Email + Inbox ("desk")
+    public DbSet<MailboxAccount> MailboxAccounts { get; set; }
+    public DbSet<EmailIngestionMessage> EmailIngestionMessages { get; set; }
+    public DbSet<ExternalOriginFile> ExternalOriginFiles { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -396,6 +403,53 @@ public class ApplicationDbContext : DbContext
                 .WithMany(i => i.Attachments)
                 .HasForeignKey(e => e.FakturoidInvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // MailboxAccount configuration
+        modelBuilder.Entity<MailboxAccount>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CompanyId);
+            entity.HasIndex(e => new { e.CompanyId, e.Enabled });
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // EmailIngestionMessage configuration
+        modelBuilder.Entity<EmailIngestionMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.MailboxAccountId);
+            entity.HasIndex(e => e.CompanyId);
+            // Idempotence: dedup on (mailbox, message-id) — prevents reingest if UID resets.
+            entity.HasIndex(e => new { e.MailboxAccountId, e.MessageId }).IsUnique();
+            entity.HasOne(e => e.MailboxAccount)
+                .WithMany()
+                .HasForeignKey(e => e.MailboxAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ExternalOriginFile configuration ("the desk")
+        modelBuilder.Entity<ExternalOriginFile>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CompanyId);
+            entity.HasIndex(e => new { e.CompanyId, e.Status, e.CreatedAt });
+            entity.HasIndex(e => e.EmailIngestionMessageId);
+            entity.HasOne(e => e.Company)
+                .WithMany()
+                .HasForeignKey(e => e.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.EmailIngestionMessage)
+                .WithMany()
+                .HasForeignKey(e => e.EmailIngestionMessageId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.ParsedInvoice)
+                .WithMany()
+                .HasForeignKey(e => e.ParsedInvoiceId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

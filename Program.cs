@@ -1,9 +1,12 @@
 using Isdocovac.Components;
 using Isdocovac.Data;
 using Isdocovac.Providers;
+using Isdocovac.Providers.Email;
+using Isdocovac.Providers.Inbox;
 using Isdocovac.Services;
 using Isdocovac.Services.Authentication;
 using Isdocovac.Services.Email;
+using Isdocovac.Services.Email.Ingestion;
 using Isdocovac.Services.Fakturoid;
 using Isdocovac.Services.Fx;
 using Isdocovac.Services.ISDOC;
@@ -151,6 +154,18 @@ builder.Services.AddScoped<IBrokerImportParser, DegiroCsvParser>();
 builder.Services.AddScoped<IBrokerImportParser, XtbXlsxParser>();
 builder.Services.AddScoped<ISymbolResolutionService, SymbolResolutionService>();
 builder.Services.AddScoped<IBrokerImportService, BrokerImportService>();
+
+// Email ingestion ("desk")
+builder.Services.Configure<EmailIngestionOptions>(
+    builder.Configuration.GetSection(EmailIngestionOptions.SectionName));
+builder.Services.AddSingleton<IPasswordCipher, AesGcmPasswordCipher>();
+builder.Services.AddScoped<IMailboxAccountProvider, MailboxAccountProvider>();
+builder.Services.AddScoped<IEmailIngestionMessageProvider, EmailIngestionMessageProvider>();
+builder.Services.AddScoped<IExternalOriginFileProvider, ExternalOriginFileProvider>();
+builder.Services.AddScoped<IImapMailboxClient, MailKitImapMailboxClient>();
+builder.Services.AddScoped<IEmailIngestionService, EmailIngestionService>();
+// BackgroundService gates itself off when EmailIngestion:Enabled is false (local debug).
+builder.Services.AddHostedService<EmailIngestionWorker>();
 
 var app = builder.Build();
 

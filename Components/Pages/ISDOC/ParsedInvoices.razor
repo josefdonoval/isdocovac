@@ -21,7 +21,7 @@
             <h1>Rozparsované faktury</h1>
             <p class="text-muted">Zkontrolujte a naimportujte rozpoznané doklady</p>
         </div>
-        <button class="btn btn-primary" @onclick="NavigateToUpload">
+        <button type="button" class="btn btn-primary" @onclick="NavigateToUpload">
             Nahrát nový doklad
         </button>
     </div>
@@ -47,6 +47,21 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success alert-dismissible" role="alert">
+            @successMessage
+            <button type="button" class="btn-close" @onclick="() => successMessage = null"></button>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
     @if (isLoading)
     {
         <div class="text-center py-5">
@@ -54,12 +69,6 @@
                 <span class="visually-hidden">Načítání…</span>
             </div>
             <p class="mt-2">Načítám rozparsované faktury…</p>
-        </div>
-    }
-    else if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger" role="alert">
-            @errorMessage
         </div>
     }
     else if (parsedInvoices == null || !parsedInvoices.Any())
@@ -156,13 +165,20 @@
                                     }
                                     else if (parsedInvoice.Status == ParsedInvoiceStatus.Uploaded || parsedInvoice.Status == ParsedInvoiceStatus.ValidationFailed)
                                     {
-                                        <button class="btn btn-outline-primary" @onclick="() => StartParsing(parsedInvoice.Id)" title="Spustit nové zpracování">
+                                        <button type="button" class="btn btn-outline-primary" @onclick="() => StartParsing(parsedInvoice.Id)" title="Spustit nové zpracování">
                                             Zpracovat znovu
                                         </button>
                                     }
 
-                                    <button class="btn btn-outline-danger" @onclick="() => DeleteParsedInvoice(parsedInvoice.Id)" title="Smazat">
-                                        Smazat
+                                    <button type="button" class="btn btn-outline-danger" @onclick="() => StartDelete(parsedInvoice)" title="Smazat" disabled="@(deletingId == parsedInvoice.Id)">
+                                        @if (deletingId == parsedInvoice.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <span>Smazat</span>
+                                        }
                                     </button>
                                 </div>
                             </td>
@@ -188,6 +204,46 @@
     }
 </div>
 
+@if (deleteCandidate != null)
+{
+    <div class="modal d-block" tabindex="-1" role="dialog" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Smazat fakturu?</h5>
+                    <button type="button" class="btn-close" @onclick="CancelDelete"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">
+                        Chystáte se smazat parsovaný doklad
+                        <strong>@(deleteCandidate.InvoiceNumber ?? deleteCandidate.FileName)</strong>.
+                    </p>
+                    @if (deleteCandidate.ImportedInvoiceId.HasValue)
+                    {
+                        <div class="alert alert-warning py-2 small mb-0">
+                            Doklad už byl importován jako faktura — smazáním zmizí <strong>i z evidence faktur</strong>. Tato akce je nevratná.
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-0">Tato akce je nevratná.</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete">Zrušit</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@(deletingId != null)">
+                        @if (deletingId != null)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        <span>Smazat</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter]
     private Task<AuthenticationState>? authenticationStateTask { get; set; }
@@ -195,8 +251,11 @@
     private List<ParsedInvoice>? parsedInvoices;
     private bool isLoading = true;
     private string? errorMessage;
+    private string? successMessage;
     private Guid companyId;
     private ParsedInvoiceStatus? selectedStatus = null;
+    private ParsedInvoice? deleteCandidate;
+    private Guid? deletingId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -248,31 +307,44 @@
         }
     }
 
-    private async Task DeleteParsedInvoice(Guid parsedInvoiceId)
+    private void StartDelete(ParsedInvoice invoice)
     {
-        if (!confirm("Are you sure you want to delete this parsed invoice?"))
-            return;
+        deleteCandidate = invoice;
+        successMessage = null;
+        errorMessage = null;
+    }
 
+    private void CancelDelete()
+    {
+        if (deletingId != null) return;
+        deleteCandidate = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (deleteCandidate == null) return;
+        var id = deleteCandidate.Id;
+        deletingId = id;
         try
         {
-            await ParsedInvoiceService.DeleteAsync(parsedInvoiceId);
+            await ParsedInvoiceService.DeleteAsync(id);
+            successMessage = $"Faktura {deleteCandidate.InvoiceNumber ?? deleteCandidate.FileName} byla smazána.";
+            deleteCandidate = null;
             await LoadParsedInvoices();
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error deleting invoice: {ex.Message}";
+            errorMessage = $"Smazání selhalo: {ex.Message}";
+        }
+        finally
+        {
+            deletingId = null;
+            StateHasChanged();
         }
     }
 
     private void NavigateToUpload()
     {
         NavigationManager.NavigateTo("/upload-invoice");
-    }
-
-    private bool confirm(string message)
-    {
-        // In a real application, you'd use JavaScript interop for confirmation
-        // For now, we'll just return true
-        return true;
     }
 }

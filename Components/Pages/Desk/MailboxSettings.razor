@@ -1,0 +1,247 @@
+@page "/settings/mailboxes"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using Isdocovac.Models.Email
+@using Isdocovac.Providers.Email
+@using Isdocovac.Services.Authentication
+@using Isdocovac.Services.Security
+@inject IMailboxAccountProvider MailboxProvider
+@inject IPasswordCipher PasswordCipher
+@inject ICurrentCompanyAccessor CurrentCompanyAccessor
+
+<PageTitle>Schránky - Isdocovac</PageTitle>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h2 class="mb-1">IMAP schránky</h2>
+            <p class="text-muted mb-0">Připojte emailové schránky, ze kterých se budou přílohy automaticky stahovat na <a href="/desk">stůl</a>.</p>
+        </div>
+        <button type="button" class="btn btn-primary" @onclick="StartCreate">+ Přidat schránku</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @messageClass" role="alert">@message</div>
+    }
+
+    @if (mailboxes.Count == 0 && editingId == null && !showNew)
+    {
+        <div class="card"><div class="card-body">
+            <p class="text-muted mb-0">Zatím nemáte připojenou žádnou schránku.</p>
+        </div></div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Název</th>
+                        <th>Server</th>
+                        <th>Uživatel</th>
+                        <th>Stav</th>
+                        <th>Naposledy</th>
+                        <th class="text-end">Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var m in mailboxes)
+                {
+                    <tr>
+                        <td>@m.DisplayName</td>
+                        <td class="small">@m.ImapHost:@m.ImapPort@(m.UseSsl ? " (SSL)" : "")</td>
+                        <td class="small">@m.Username</td>
+                        <td>
+                            @if (m.Enabled)
+                            {
+                                <span class="badge bg-success">Aktivní</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Vypnuté</span>
+                            }
+                            @if (!string.IsNullOrEmpty(m.LastErrorMessage))
+                            {
+                                <span class="badge bg-danger ms-1" title="@m.LastErrorMessage">Chyba</span>
+                            }
+                        </td>
+                        <td class="small">@(m.LastPolledAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(m)">Upravit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Delete(m.Id)">Smazat</button>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (showNew || editingId != null)
+    {
+        <div class="card mt-3"><div class="card-body">
+            <h5>@(editingId == null ? "Nová schránka" : "Upravit schránku")</h5>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Název (jen pro vás)</label>
+                    <input class="form-control" @bind="form.DisplayName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">IMAP host</label>
+                    <input class="form-control" @bind="form.ImapHost" placeholder="imap.gmail.com" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Port</label>
+                    <input type="number" class="form-control" @bind="form.ImapPort" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input id="ssl" class="form-check-input" type="checkbox" @bind="form.UseSsl" />
+                        <label class="form-check-label" for="ssl">Použít SSL/TLS</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Uživatel (emailová adresa)</label>
+                    <input class="form-control" @bind="form.Username" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Heslo / App password</label>
+                    <input type="password" class="form-control" @bind="passwordInput" placeholder="@(editingId == null ? "" : "(ponechte prázdné pro zachování stávajícího)")" />
+                    <div class="form-text">Heslo se ukládá zašifrované AES-GCM. Pro Gmail použijte <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">App Password</a>.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Složka pro přečtené</label>
+                    <input class="form-control" @bind="form.ProcessedFolderName" />
+                    <div class="form-text">Po stažení se zpráva přesune sem (vytvoří se, pokud neexistuje).</div>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <div class="form-check">
+                        <input id="enabled" class="form-check-input" type="checkbox" @bind="form.Enabled" />
+                        <label class="form-check-label" for="enabled">Aktivní</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-2">
+                <button type="button" class="btn btn-primary" @onclick="Save">Uložit</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="Cancel">Zrušit</button>
+            </div>
+        </div></div>
+    }
+</div>
+
+@code {
+    private List<MailboxAccount> mailboxes = new();
+    private bool showNew;
+    private Guid? editingId;
+    private MailboxAccount form = NewForm();
+    private string passwordInput = string.Empty;
+    private string? message;
+    private string messageClass = "alert-info";
+    private Guid? activeCompanyId;
+
+    private static MailboxAccount NewForm() => new()
+    {
+        DisplayName = string.Empty,
+        ImapHost = "imap.gmail.com",
+        ImapPort = 993,
+        UseSsl = true,
+        Username = string.Empty,
+        ProcessedFolderName = "Isdocovac/Processed",
+        Enabled = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var company = await CurrentCompanyAccessor.GetActiveCompanyAsync();
+        activeCompanyId = company?.Id;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (activeCompanyId == null) return;
+        mailboxes = (await MailboxProvider.ListByCompanyAsync(activeCompanyId.Value)).ToList();
+    }
+
+    private void StartCreate()
+    {
+        form = NewForm();
+        passwordInput = string.Empty;
+        editingId = null;
+        showNew = true;
+    }
+
+    private void StartEdit(MailboxAccount m)
+    {
+        form = new MailboxAccount
+        {
+            Id = m.Id,
+            DisplayName = m.DisplayName,
+            ImapHost = m.ImapHost,
+            ImapPort = m.ImapPort,
+            UseSsl = m.UseSsl,
+            Username = m.Username,
+            ProcessedFolderName = m.ProcessedFolderName,
+            Enabled = m.Enabled
+        };
+        passwordInput = string.Empty;
+        editingId = m.Id;
+        showNew = false;
+    }
+
+    private void Cancel()
+    {
+        showNew = false;
+        editingId = null;
+        passwordInput = string.Empty;
+    }
+
+    private async Task Save()
+    {
+        if (activeCompanyId == null) return;
+
+        try
+        {
+            if (editingId == null)
+            {
+                if (string.IsNullOrWhiteSpace(passwordInput))
+                {
+                    message = "Heslo je povinné při vytváření nové schránky.";
+                    messageClass = "alert-danger";
+                    return;
+                }
+                form.CompanyId = activeCompanyId.Value;
+                form.PasswordEncrypted = PasswordCipher.Encrypt(passwordInput);
+                await MailboxProvider.CreateAsync(form);
+                message = "Schránka přidána.";
+                messageClass = "alert-success";
+            }
+            else
+            {
+                form.Id = editingId.Value;
+                form.CompanyId = activeCompanyId.Value;
+                form.PasswordEncrypted = string.IsNullOrWhiteSpace(passwordInput)
+                    ? string.Empty // signal "keep existing" to provider
+                    : PasswordCipher.Encrypt(passwordInput);
+                await MailboxProvider.UpdateAsync(form);
+                message = "Schránka uložena.";
+                messageClass = "alert-success";
+            }
+
+            Cancel();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            message = $"Uložení selhalo: {ex.Message}";
+            messageClass = "alert-danger";
+        }
+    }
+
+    private async Task Delete(Guid id)
+    {
+        await MailboxProvider.DeleteAsync(id);
+        await ReloadAsync();
+    }
+}

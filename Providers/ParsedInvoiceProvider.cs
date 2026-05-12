@@ -8,6 +8,19 @@ namespace Isdocovac.Providers;
 public interface IParsedInvoiceProvider
 {
     Task<ParsedInvoice> CreateUploadAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent);
+
+    /// <summary>
+    /// Creates a ParsedInvoice that references an already-uploaded blob (no re-upload).
+    /// Used by the desk to promote an external attachment into the standard import flow.
+    /// </summary>
+    Task<ParsedInvoice> CreateFromExistingBlobAsync(
+        Guid companyId,
+        string blobContainerName,
+        string blobName,
+        string fileName,
+        long fileSize,
+        string contentType);
+
     Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null);
     Task<ParsedInvoice?> GetByIdAsync(Guid parsedInvoiceId);
     Task<ParsedInvoice?> GetWithProcessingsAsync(Guid parsedInvoiceId);
@@ -56,6 +69,37 @@ public class ParsedInvoiceProvider : IParsedInvoiceProvider
             FileSize = fileSize,
             ContentType = contentType,
             BlobContainerName = containerName,
+            BlobName = blobName,
+            BlobUrl = blobUrl,
+            UploadedAt = DateTime.UtcNow,
+            Status = ParsedInvoiceStatus.Uploaded,
+            IsValid = false,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.ParsedInvoices.Add(parsedInvoice);
+        await _context.SaveChangesAsync();
+        return parsedInvoice;
+    }
+
+    public async Task<ParsedInvoice> CreateFromExistingBlobAsync(
+        Guid companyId,
+        string blobContainerName,
+        string blobName,
+        string fileName,
+        long fileSize,
+        string contentType)
+    {
+        var blobUrl = _blobStorageProvider.GetBlobUrl(blobContainerName, blobName);
+        var parsedInvoice = new ParsedInvoice
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = companyId,
+            FileName = fileName,
+            FileSize = fileSize,
+            ContentType = contentType,
+            BlobContainerName = blobContainerName,
             BlobName = blobName,
             BlobUrl = blobUrl,
             UploadedAt = DateTime.UtcNow,

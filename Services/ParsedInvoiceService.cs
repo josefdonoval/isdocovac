@@ -8,6 +8,21 @@ namespace Isdocovac.Services;
 public interface IParsedInvoiceService
 {
     Task<ParsedInvoice> UploadIsdocAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null);
+
+    /// <summary>
+    /// Creates a ParsedInvoice from an already-uploaded blob (e.g. an email attachment) and
+    /// kicks off the appropriate parser pipeline (PDF or XML/ISDOC). Caller must have an explicit
+    /// user-confirmed intent to import — this method may invoke paid AI extraction services.
+    /// </summary>
+    Task<ParsedInvoice> IngestFromExistingBlobAsync(
+        Guid companyId,
+        string blobContainerName,
+        string blobName,
+        string fileName,
+        long fileSize,
+        string contentType,
+        InvoiceLineMode? lineMode = null);
+
     Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null);
     Task<ParsedInvoice?> GetParsedInvoiceWithProcessingsAsync(Guid parsedInvoiceId);
     Task<ParsedInvoiceProcessing> StartParsingAsync(Guid parsedInvoiceId);
@@ -42,29 +57,50 @@ public class ParsedInvoiceService : IParsedInvoiceService
     public async Task<ParsedInvoice> UploadIsdocAsync(Guid companyId, string fileName, long fileSize, string contentType, Stream fileContent, InvoiceLineMode? lineMode = null)
     {
         var parsedInvoice = await _parsedInvoiceProvider.CreateUploadAsync(companyId, fileName, fileSize, contentType, fileContent);
+        await StartParsingPipelineAsync(parsedInvoice.Id, fileName, contentType, lineMode);
+        return parsedInvoice;
+    }
 
-        // Detect file type
-        var isPdf = contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase) ||
-                    fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
-        var sourceFileType = isPdf ? "PDF" : "XML";
+    public async Task<ParsedInvoice> IngestFromExistingBlobAsync(
+        Guid companyId,
+        string blobContainerName,
+        string blobName,
+        string fileName,
+        long fileSize,
+        string contentType,
+        InvoiceLineMode? lineMode = null)
+    {
+        var parsedInvoice = await _parsedInvoiceProvider.CreateFromExistingBlobAsync(
+            companyId, blobContainerName, blobName, fileName, fileSize, contentType);
+        await StartParsingPipelineAsync(parsedInvoice.Id, fileName, contentType, lineMode);
+        return parsedInvoice;
+    }
 
-        await _parsedInvoiceProvider.UpdateSourceFileTypeAsync(parsedInvoice.Id, sourceFileType);
+    /// <summary>
+    /// Shared post-creation hook: tags source file type, optionally records line mode for PDFs,
+    /// creates the first processing attempt and starts the appropriate parser on a background task.
+    /// </summary>
+    private async Task StartParsingPipelineAsync(Guid parsedInvoiceId, string fileName, string contentType, InvoiceLineMode? lineMode)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        var isPdf = contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase) || ext == ".pdf";
+        var isImage = !isPdf && (
+            contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+            ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".heic" or ".tif" or ".tiff");
 
-        // Set line mode for PDFs
+        var sourceFileType = isPdf ? "PDF" : isImage ? "Image" : "XML";
+        await _parsedInvoiceProvider.UpdateSourceFileTypeAsync(parsedInvoiceId, sourceFileType);
+
         if (isPdf && lineMode.HasValue)
         {
-            await _parsedInvoiceProvider.UpdateLineModeAsync(parsedInvoice.Id, lineMode.Value);
+            await _parsedInvoiceProvider.UpdateLineModeAsync(parsedInvoiceId, lineMode.Value);
         }
 
-        // Create initial processing attempt
-        var processing = await _processingProvider.CreateProcessingAsync(parsedInvoice.Id, 1);
-
-        var parsedInvoiceId = parsedInvoice.Id;
+        var processing = await _processingProvider.CreateProcessingAsync(parsedInvoiceId, 1);
         var processingId = processing.Id;
 
         if (isPdf)
         {
-            // Background processing runs in its own DI scope so the DbContext outlives the request scope.
             _ = Task.Run(async () =>
             {
                 using var scope = _scopeFactory.CreateScope();
@@ -78,6 +114,14 @@ public class ParsedInvoiceService : IParsedInvoiceService
                     _logger.LogError(ex, "Background PDF processing failed for {ParsedInvoiceId}", parsedInvoiceId);
                 }
             });
+        }
+        else if (isImage)
+        {
+            // Image extraction (Claude/OpenAI vision) is not implemented yet. Mark the parsed
+            // invoice as awaiting manual entry so the user can fill the form and import it.
+            // The original image stays in blob storage and is shown as preview on the import page.
+            await _parsedInvoiceProvider.UpdateStatusAsync(parsedInvoiceId, ParsedInvoiceStatus.Parsed);
+            await _processingProvider.UpdateProcessingStatusAsync(processingId, ProcessingStatus.Completed);
         }
         else
         {
@@ -95,8 +139,6 @@ public class ParsedInvoiceService : IParsedInvoiceService
                 }
             });
         }
-
-        return parsedInvoice;
     }
 
     public async Task<IEnumerable<ParsedInvoice>> GetCompanyParsedInvoicesAsync(Guid companyId, ParsedInvoiceStatus? status = null)
