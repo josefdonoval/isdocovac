@@ -74,6 +74,13 @@
     --bs-info: var(--info);
 }
 
+/* Bootstrap turns on root-level smooth scrolling. In Safari an in-flight smooth
+   scroll survives the router's scroll-to-top, so a new page can open part-way
+   down the previous page's scroll position. */
+:root {
+    scroll-behavior: auto;
+}
+
 html, body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     background: var(--bg);

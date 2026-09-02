@@ -3,6 +3,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    min-height: 100dvh;
     background: var(--bg);
 }
 
@@ -102,18 +103,40 @@ main {
         flex-direction: row;
     }
 
+    /* The shell is taken out of flow rather than made sticky: Safari repeatedly
+       mis-places sticky flex items after the router swaps @Body, which showed up
+       as the sidebar/header drifting by the scroll offset. */
     .sidebar {
-        width: 260px;
-        height: 100vh;
-        position: sticky;
+        position: fixed;
         top: 0;
-        flex-shrink: 0;
+        left: 0;
+        bottom: 0;
+        width: 260px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 20;
     }
 
     .top-row {
-        position: sticky;
+        position: fixed;
         top: 0;
+        left: 0;
+        right: 0;
         z-index: 10;
+    }
+
+    /* Only reserve the sidebar gutter when it is actually rendered (authorized). */
+    .sidebar ~ main {
+        margin-left: 260px;
+    }
+
+    .sidebar ~ main .top-row {
+        left: 260px;
+    }
+
+    .content {
+        padding-top: calc(5rem + 2rem);
     }
 }
 
